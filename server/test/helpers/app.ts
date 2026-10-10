@@ -11,8 +11,8 @@ import { ReplayClock } from '../../src/realtime/clock.js';
 import { AlertEngine } from '../../src/realtime/engine.js';
 import { runSqlSuite } from '../../src/sql/runner.js';
 
-export const LATEST_TICK = 19;
-/** Virtual start: cycle 1000, tick 19 (1 ms in, so floor() is unambiguous). */
+export const LATEST_TICK = config.SNAPSHOT_COUNT - 1;
+/** Virtual start: cycle 1000, the latest tick (1 ms in, so floor() is unambiguous). */
 const START_MS = (1000 * config.SNAPSHOT_COUNT + LATEST_TICK) * config.TICK_MS + 1;
 
 /** A ReplayClock on a fake wall clock the test moves by hand. */

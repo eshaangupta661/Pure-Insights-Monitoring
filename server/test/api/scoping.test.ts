@@ -8,6 +8,7 @@ import type {
 import type { Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DuckDBValue } from '@duckdb/node-api';
+import { config } from '../../src/config.js';
 import { buildTestApp, type TestApp } from '../helpers/app.js';
 import { loginAs } from '../helpers/auth.js';
 
@@ -158,7 +159,7 @@ describe('owner scoping (user_3, who owns 11 reports)', () => {
 
   it('GET /data-quality counts over their reports’ 220 rows only', async () => {
     const dq: DataQualityResponse = (await owner.get('/api/v1/data-quality')).body;
-    expect(dq.scopedRows).toBe(11 * 20);
+    expect(dq.scopedRows).toBe(11 * config.SNAPSHOT_COUNT);
     const ids = mine.map((id) => `'${id}'`).join(',');
     const [expected] = await t.sql<{ orphaned: number; quarantined: number }>(
       `SELECT count_if(list_contains(dq_flags, 'ORPHANED'))::INTEGER AS orphaned,
