@@ -1,24 +1,72 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import express, { type ErrorRequestHandler, type Express } from 'express';
-import type { ApiError, HealthResponse } from '@pic/shared';
+import cookieParser from 'cookie-parser';
+import express, { type Express } from 'express';
+import swaggerUi from 'swagger-ui-express';
+import type { HealthResponse } from '@pic/shared';
+import { openApiDocument } from './api/openapi.js';
+import { requireSameOrigin } from './auth/middleware.js';
+import { config } from './config.js';
+import type { ApiDeps } from './deps.js';
+import { apiError, errorHandler } from './http/errors.js';
+import { rateLimit, type RateLimit } from './http/rateLimit.js';
+import { mountRoutes } from './http/route.js';
 import { CLIENT_DIST } from './paths.js';
 import { currentTick } from './realtime/clock.js';
+import { ALL_ROUTES } from './routes/index.js';
 
-function apiError(code: string, message: string): ApiError {
-  return { error: { code, message } };
+export interface AppOptions {
+  /** CSRF Origin check on mutations (auth/middleware.ts). Defaults to on in production. */
+  enforceOrigin?: boolean;
+  /** `Secure` on the session cookie (HTTPS only). Defaults to on in production. */
+  secureCookies?: boolean;
+  /** Per-IP limit on POST /auth/login; false turns it off. Defaults to config.LOGIN_RATE_LIMIT. */
+  loginRateLimit?: RateLimit | false;
 }
 
-export function createApp(): Express {
+/**
+ * Without `deps` the routes still mount (auth works, /health works), but any handler that needs
+ * the warehouse answers 500. index.ts and the API tests always pass deps.
+ */
+export function createApp(deps?: ApiDeps, options: AppOptions = {}): Express {
   const app = express();
+  // Render terminates TLS at one proxy hop and adds X-Forwarded-For / -Proto. Trusting exactly
+  // that hop makes req.ip the client (for the login limiter) without letting a client spoof it
+  // through extra X-Forwarded-For entries. The Origin check reads the Host header, which the
+  // proxy passes through, and the Secure cookie flag comes from `secureCookies`, not
+  // req.secure, so neither depends on this setting.
+  app.set('trust proxy', 1);
+  app.locals.secureCookies = options.secureCookies ?? config.nodeEnv === 'production';
   app.use(express.json());
+  app.use(cookieParser());
 
   app.get('/health', (_req, res) => {
-    const body: HealthResponse = { status: 'ok', tick: currentTick(), uptime: process.uptime() };
+    const tick = deps ? deps.clock.tick() : currentTick();
+    const body: HealthResponse = { status: 'ok', tick, uptime: process.uptime() };
     res.json(body);
   });
 
+  // Generated from the route declarations; Swagger UI calls the API on this origin, so after
+  // POST /auth/login the session cookie authenticates "Try it out".
+  app.get('/api/openapi.json', (_req, res) => {
+    res.json(openApiDocument());
+  });
+  app.use(
+    '/api/docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument(), {
+      customSiteTitle: 'Pure Insights Command Center API',
+      swaggerOptions: { withCredentials: true, displayRequestDuration: true },
+    }),
+  );
+
+  // Only /health, /api/openapi.json and /api/docs are mounted outside ALL_ROUTES, all public by
+  // design. Anything that needs auth must go through defineRoute (and the access matrix).
   const api = express.Router();
+  api.use(requireSameOrigin(options.enforceOrigin ?? config.ENFORCE_ORIGIN));
+  const loginLimit = options.loginRateLimit ?? config.LOGIN_RATE_LIMIT;
+  if (loginLimit) api.post('/auth/login', rateLimit(loginLimit));
+  mountRoutes(api, ALL_ROUTES, deps);
   app.use('/api/v1', api);
 
   // Registered before the SPA fallback so unknown API routes always get JSON, never index.html.
@@ -38,18 +86,7 @@ export function createApp(): Express {
     });
   }
 
-  // Express 5 forwards rejected async handlers here, so no express-async-errors.
-  const onError: ErrorRequestHandler = (err: unknown, _req, res, _next) => {
-    const status = (err as { status?: unknown } | null)?.status;
-    if (typeof status === 'number' && status >= 400 && status < 500) {
-      // e.g. malformed JSON body from express.json()
-      res.status(status).json(apiError('BAD_REQUEST', 'Bad request'));
-      return;
-    }
-    console.error(err);
-    res.status(500).json(apiError('INTERNAL', 'Internal server error'));
-  };
-  app.use(onError);
+  app.use(errorHandler);
 
   return app;
 }

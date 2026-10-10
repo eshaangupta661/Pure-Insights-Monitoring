@@ -108,8 +108,10 @@ export function ownerChanged(prevOwner: string | null | undefined, owner: string
 }
 
 /**
- * current_owner = normalized owner in the latest snapshot, unless an override exists
- * (OWNER_OVERRIDES, wired up in Phase 3). NULL means the report is currently orphaned.
+ * current_owner = normalized owner in the latest snapshot, unless an override exists (an
+ * override wins even when it is null). NULL means the report is currently orphaned. Ingest runs
+ * with no overrides; at runtime the SQL view REPORT_CURRENT_OWNER (/sql/01) applies the same rule
+ * over OWNER_OVERRIDES.
  */
 export function resolveCurrentOwner(
   ownerHistory: readonly (string | null)[],

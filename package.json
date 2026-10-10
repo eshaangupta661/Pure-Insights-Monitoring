@@ -18,6 +18,7 @@
     "test": "npm run build -w @pic/shared && npm test -w @pic/server",
     "typecheck": "npm run build -w @pic/shared && npm run typecheck -w @pic/server && npm run typecheck -w @pic/client",
     "ingest": "npm run ingest -w @pic/server",
+    "openapi": "npm run build -w @pic/shared && npm run openapi -w @pic/server",
     "lint": "eslint .",
     "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude"
   },

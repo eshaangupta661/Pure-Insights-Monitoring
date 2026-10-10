@@ -16,3 +16,5 @@ export const CLIENT_DIST = path.join(ROOT_DIR, 'client', 'dist');
 export const RAW_CSV = path.join(DATA_DIR, 'raw', 'Case_Study_3_Pure_Insights_Monitoring.csv');
 export const WAREHOUSE_PATH = path.join(DATA_DIR, 'warehouse.duckdb');
 export const DQ_SUMMARY_PATH = path.join(DATA_DIR, 'dq_summary.json');
+export const DOCS_DIR = path.join(ROOT_DIR, 'docs');
+export const OPENAPI_PATH = path.join(DOCS_DIR, 'openapi.yaml');

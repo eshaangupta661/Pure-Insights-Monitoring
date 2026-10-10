@@ -274,6 +274,95 @@ describe('SQL suite (real CSV → :memory:)', () => {
     });
   });
 
+  describe('owner overrides (REPORT_CURRENT_OWNER)', () => {
+    const USER_3 = 'user_3@company.com';
+    const chargebackLine = async (owner: string) =>
+      one<{ report_count: number; attributed_credits: number }>(
+        `SELECT report_count, attributed_credits FROM OWNER_CHARGEBACK_CURRENT WHERE owner = '${owner}'`,
+      );
+    afterAll(() => db.conn.run('DELETE FROM OWNER_OVERRIDES'));
+
+    it('with no overrides the view equals REPORTS.current_owner', async () => {
+      const r = await one<{ n: number; differ: number; overridden: number }>(`
+        SELECT count(*)::INTEGER AS n,
+               count_if(o.current_owner IS DISTINCT FROM r.current_owner)::INTEGER AS differ,
+               count_if(o.is_overridden)::INTEGER AS overridden
+        FROM REPORT_CURRENT_OWNER o JOIN REPORTS r USING (report_id)`);
+      expect(r).toEqual({ n: 100, differ: 0, overridden: 0 });
+    });
+
+    it('an override moves cost between owners in the live views; C1–C5 still PASS', async () => {
+      const { report_id: moved } = await one<{ report_id: string }>(
+        `SELECT report_id FROM REPORTS WHERE current_owner = '${USER_3}' ORDER BY report_id LIMIT 1`,
+      );
+      const { report_id: orphaned } = await one<{ report_id: string }>(
+        `SELECT report_id FROM REPORTS WHERE current_owner IS NULL ORDER BY report_id LIMIT 1`,
+      );
+      const before = await chargebackLine(USER_3);
+      const movedCredits = (
+        await one<{ c: number }>(
+          `SELECT attributed_credits AS c FROM REPORT_ATTRIBUTION WHERE report_id = '${moved}'`,
+        )
+      ).c;
+
+      await db.conn.run(
+        `INSERT INTO OWNER_OVERRIDES VALUES
+           ('${moved}', 'new.owner@company.com', 'admin@pureinsights.dev', now()::TIMESTAMP, 'test'),
+           ('${orphaned}', '${USER_3}', 'admin@pureinsights.dev', now()::TIMESTAMP, 'test')`,
+      );
+
+      const after = await chargebackLine(USER_3);
+      const orphanedCredits = (
+        await one<{ c: number }>(
+          `SELECT attributed_credits AS c FROM REPORT_ATTRIBUTION WHERE report_id = '${orphaned}'`,
+        )
+      ).c;
+      expect(after.report_count).toBe(before.report_count); // −1 moved away, +1 adopted
+      expect(after.attributed_credits - before.attributed_credits).toBeCloseTo(
+        orphanedCredits - movedCredits,
+        6,
+      );
+      expect((await chargebackLine('new.owner@company.com')).report_count).toBe(1);
+      expect((await chargebackLine('UNOWNED')).report_count).toBe(13);
+
+      const zombie = await all<{ report_id: string; reason: string; current_owner: string }>(
+        db.conn,
+        `SELECT report_id, reason, current_owner FROM ANOMALY_ZOMBIE_REPORTS WHERE report_id = '${orphaned}'`,
+      );
+      // No longer orphaned: either gone from the list or kept only for low usage.
+      expect(zombie.every((z) => z.reason === 'LOW_USAGE' && z.current_owner === USER_3)).toBe(
+        true,
+      );
+
+      const recon = await all<{ check_id: string; status: string }>(
+        db.conn,
+        'SELECT check_id, status FROM RECONCILIATION',
+      );
+      expect(recon.filter((r) => r.status !== 'PASS')).toEqual([]);
+
+      // Stored results are frozen at ingest (no overrides); the API must not read owners from them.
+      const stored = await one<{ report_count: number }>(
+        `SELECT report_count FROM ${RESULTS_SCHEMA}.OWNER_CHARGEBACK_CURRENT WHERE owner = 'UNOWNED'`,
+      );
+      expect(stored.report_count).toBe(14);
+    });
+
+    it('an override to NULL orphans the report', async () => {
+      await db.conn.run('DELETE FROM OWNER_OVERRIDES');
+      const { report_id } = await one<{ report_id: string }>(
+        `SELECT report_id FROM REPORTS WHERE current_owner = '${USER_3}' ORDER BY report_id LIMIT 1`,
+      );
+      await db.conn.run(
+        `INSERT INTO OWNER_OVERRIDES VALUES ('${report_id}', NULL, 'admin@pureinsights.dev', now()::TIMESTAMP, NULL)`,
+      );
+      const r = await one<{ current_owner: string | null; is_orphaned: boolean }>(
+        `SELECT current_owner, is_orphaned FROM REPORT_CURRENT_OWNER WHERE report_id = '${report_id}'`,
+      );
+      expect(r).toEqual({ current_owner: null, is_orphaned: true });
+      expect((await chargebackLine('UNOWNED')).report_count).toBe(15);
+    });
+  });
+
   describe('stored results (startup path)', () => {
     it('loadSqlResults returns what runSqlSuite stored, and getSqlResults serves it', async () => {
       const stored = await loadSqlResults(db.conn);

@@ -9,7 +9,7 @@ and locally against DuckDB through four small, documented translations.
 | file                        | creates                                                                                                     | what it does                                                                                                   |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `00_setup_parameters.sql`   | `PARAMS`, `PARAM_ORPHAN_MARKERS`                                                                            | every price, rate and threshold (mirrors `server/src/config.ts`)                                               |
-| `01_schema.sql`             | all tables                                                                                                  | portal tables + `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` / `WAREHOUSE_METERING_HISTORY`                         |
+| `01_schema.sql`             | all tables, `REPORT_CURRENT_OWNER`                                                                          | portal tables + `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` / `WAREHOUSE_METERING_HISTORY`; the effective owner    |
 | `02_data_quality.sql`       | `DQ_ROW_CHECKS`, `DQ_CHECKS`                                                                                | DQ01–DQ09 recomputed from the raw CSV text; compared with the TypeScript counts                                |
 | `03_query_level_cost.sql`   | `QUERY_HOUR_COST`, `QUERY_ATTRIBUTED_COST`                                                                  | each warehouse-hour's metered credits split across its queries by execution-time share                         |
 | `04_report_attribution.sql` | `REPORT_ATTRIBUTION_DAILY`, `REPORT_ATTRIBUTION`                                                            | roll-up via `QUERY_TAG`: credits, active/overhead split, $ cost, share; plus an `UNATTRIBUTED` line            |
@@ -40,6 +40,26 @@ Otherwise it loads the stored results and asserts that every stored check is PAS
 Naming: Snowflake system columns are UPPER (as in Snowflake's docs). Tables and views are UPPER.
 Columns we define are `lower_snake`. Money is never rounded in SQL; rounding happens only at
 presentation.
+
+## Ownership and admin overrides
+
+"Who owns this report now" is defined once, in the view `REPORT_CURRENT_OWNER` (01):
+
+```
+current_owner = OWNER_OVERRIDES.owner_email   if an override row exists (even when NULL)
+              = REPORTS.current_owner         otherwise (the latest snapshot's owner, from ingest)
+```
+
+04–07 read `current_owner` from that view, never from `REPORTS`. An admin reassigns a report with
+`PATCH /api/v1/reports/:id/owner`, which writes `OWNER_OVERRIDES` and `AUDIT_LOG` in one
+transaction. Overrides only move cost between owners. Totals do not change, so C3–C5 hold with
+or without them; the integration test applies an override and re-checks C5 on the live views.
+
+The results stored in `SQL_RESULTS` are frozen at ingest, when `OWNER_OVERRIDES` is empty. The
+API therefore never reads `current_owner` from them. It joins `REPORT_CURRENT_OWNER`, and reads
+the row sets that depend on ownership (`OWNER_CHARGEBACK_CURRENT`, `ANOMALY_ZOMBIE_REPORTS`)
+from the live views. Re-running ingest rebuilds the warehouse and clears overrides and the audit
+log.
 
 ## The attribution math
 
@@ -157,7 +177,8 @@ translation:
   The `LN(...)` calls in 02 and 06 are also guarded with `CASE` inside the call, not only by the
   CTE's `WHERE`, because Snowflake does not promise to filter before evaluating expressions.
 - **Zombie report:** in the latest snapshot, the report still spends credits AND
-  (`current_owner IS NULL` OR views < `cost_low_views`).
+  (`current_owner IS NULL` OR views < `cost_low_views`), where `current_owner` comes from
+  `REPORT_CURRENT_OWNER`.
 - **Two chargeback views:** point-in-time charges each snapshot to that snapshot's owner;
   current charges all history to today's owner. Reports change owners 7–13 times, so the two
   differ: the UNOWNED line is about 162k credits point-in-time vs. about 199k under current owner.

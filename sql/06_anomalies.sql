@@ -2,7 +2,7 @@
 -- 06_anomalies.sql
 -- Purpose     : Cost anomalies worth a human look.
 -- Inputs      : UNIT_ECONOMICS_SNAPSHOT (05), REPORT_ATTRIBUTION (04), DQ_ROW_CHECKS (02),
---               REPORT_SNAPSHOTS, REPORTS, QUARANTINE, PARAMS
+--               REPORT_SNAPSHOTS, REPORTS, REPORT_CURRENT_OWNER (01), QUARANTINE, PARAMS
 -- Outputs     : VIEW ANOMALY_COST_PER_VIEW (snapshots whose fully-loaded cost per view is an outlier)
 --                 report_id, report_name, snapshot_idx, snapshot_date, views,
 --                 fully_loaded_cost_per_view, robust_z, direction ('HIGH' | 'LOW')
@@ -73,11 +73,11 @@ WITH latest AS (
 flagged AS (
     SELECT
         l.*,
-        r.current_owner,
-        r.current_owner IS NULL      AS is_orphaned,
+        o.current_owner,
+        o.is_orphaned,
         l.views < p.cost_low_views   AS is_low_usage
     FROM latest l
-    JOIN REPORTS r ON r.report_id = l.report_id
+    JOIN REPORT_CURRENT_OWNER o ON o.report_id = l.report_id
     CROSS JOIN PARAMS p
     WHERE l.attributed_credits > 0
 )
@@ -123,10 +123,11 @@ SELECT
     q.report_id,
     r.report_name,
     q.snapshot_idx,
-    r.current_owner,
+    o.current_owner,
     CAST(q.raw_value AS DOUBLE) AS raw_credits,
     q.reason
 FROM QUARANTINE q
 JOIN REPORTS r ON r.report_id = q.report_id
+JOIN REPORT_CURRENT_OWNER o ON o.report_id = q.report_id
 WHERE q.rule_id = 'DQ02'
 ORDER BY raw_credits, q.row_idx;

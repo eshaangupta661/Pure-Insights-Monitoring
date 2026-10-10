@@ -9,7 +9,7 @@
 --                 OWNER_CHARGEBACK_CURRENT  all of a report's history goes to its current owner.
 --                                           Use for "who should act now" (cleanup, budgets).
 --               With 7–13 owners per report over 20 snapshots, the two differ a lot.
--- Inputs      : UNIT_ECONOMICS_SNAPSHOT (05), REPORT_ATTRIBUTION (04), REPORTS
+-- Inputs      : UNIT_ECONOMICS_SNAPSHOT (05), REPORT_ATTRIBUTION (04), REPORT_CURRENT_OWNER (01)
 -- Outputs     : Both views have one row per owner plus two lines that are always present:
 --                 'UNOWNED'       reports whose owner is NULL (orphaned)
 --                 'UNATTRIBUTED'  credits on untagged / unknown-report queries, from the
@@ -28,7 +28,9 @@
 --                 share_of_total_cost   total_cost_usd / Σ total_cost_usd
 -- Assumptions :
 --   * 'UNOWNED' and 'UNATTRIBUTED' cannot collide with a real owner: emails are stored lowercase.
---   * current_owner is REPORTS.current_owner (latest snapshot's owner).
+--   * current_owner is REPORT_CURRENT_OWNER.current_owner: the latest snapshot's owner unless an
+--     admin override exists. An override moves a report's whole history to the new owner here;
+--     totals do not change, so C5 holds with or without overrides.
 --   * Each view, UNATTRIBUTED included, sums to Σ query-attributed credits; 08 checks it.
 -- =============================================================================
 
@@ -79,13 +81,13 @@ ORDER BY total_cost_usd DESC, owner;
 CREATE OR REPLACE VIEW OWNER_CHARGEBACK_CURRENT AS
 WITH lines AS (
     SELECT
-        COALESCE(r.current_owner, 'UNOWNED')        AS owner,
+        COALESCE(o.current_owner, 'UNOWNED')        AS owner,
         u.report_id,
         COALESCE(u.attributed_credits, 0)           AS attributed_credits,
         COALESCE(u.snowflake_cost_usd, 0)           AS snowflake_cost_usd,
         u.aws_cost_usd
     FROM UNIT_ECONOMICS_SNAPSHOT u
-    JOIN REPORTS r ON r.report_id = u.report_id
+    JOIN REPORT_CURRENT_OWNER o ON o.report_id = u.report_id
     UNION ALL
     SELECT 'UNATTRIBUTED', NULL, a.attributed_credits, a.attributed_cost_usd, 0
     FROM REPORT_ATTRIBUTION a

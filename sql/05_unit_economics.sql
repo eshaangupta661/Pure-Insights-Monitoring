@@ -3,7 +3,8 @@
 -- Purpose     : Cost per active view, per snapshot and per report, in two variants:
 --                 Snowflake-only  = attributed credits × price / views
 --                 fully loaded    = (attributed credits × price + AWS hosting) / views
--- Inputs      : REPORT_SNAPSHOTS, REPORT_ATTRIBUTION_DAILY (04), REPORTS, PARAMS
+-- Inputs      : REPORT_SNAPSHOTS, REPORT_ATTRIBUTION_DAILY (04), REPORTS, REPORT_CURRENT_OWNER (01),
+--               PARAMS
 -- Outputs     : VIEW UNIT_ECONOMICS_SNAPSHOT (one row per report × snapshot)
 --                 report_id, report_name, snapshot_idx, snapshot_date, owner_email, views,
 --                 aws_cost_usd, attributed_credits, snowflake_cost_usd, fully_loaded_cost_usd,
@@ -76,7 +77,7 @@ WITH totals AS (
 SELECT
     r.report_id,
     r.report_name,
-    r.current_owner,
+    o.current_owner,
     t.snapshot_count,
     t.costed_snapshot_count,
     t.snowflake_cost_usd,
@@ -86,5 +87,6 @@ SELECT
     t.snowflake_cost_usd / NULLIF(t.costed_views, 0)        AS snowflake_cost_per_view,
     t.fully_loaded_cost_usd / NULLIF(t.costed_views, 0)     AS fully_loaded_cost_per_view
 FROM REPORTS r
+JOIN REPORT_CURRENT_OWNER o ON o.report_id = r.report_id
 JOIN totals t ON t.report_id = r.report_id
 ORDER BY fully_loaded_cost_per_view DESC NULLS LAST, r.report_id;

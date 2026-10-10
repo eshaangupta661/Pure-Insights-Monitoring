@@ -1,7 +1,7 @@
 -- =============================================================================
 -- 04_report_attribution.sql
 -- Purpose     : Roll query-level cost up to reports through QUERY_TAG, per day and in total.
--- Inputs      : QUERY_ATTRIBUTED_COST (03), REPORTS, PARAMS
+-- Inputs      : QUERY_ATTRIBUTED_COST (03), REPORTS, REPORT_CURRENT_OWNER (01), PARAMS
 -- Outputs     : VIEW REPORT_ATTRIBUTION_DAILY (one row per report × usage_date with queries)
 --                 report_id, usage_date, query_count, attributed_credits, attributed_cost_usd
 --               VIEW REPORT_ATTRIBUTION (one row per report in REPORTS, including reports with
@@ -51,10 +51,11 @@ credits AS (
     SELECT
         r.report_id,
         r.report_name,
-        r.current_owner,
+        o.current_owner,
         COALESCE(a.query_count, 0)::INTEGER  AS query_count,
         COALESCE(a.attributed_credits, 0)    AS attributed_credits
     FROM REPORTS r
+    JOIN REPORT_CURRENT_OWNER o ON o.report_id = r.report_id
     LEFT JOIN per_report a ON a.report_id = r.report_id
     UNION ALL
     SELECT
