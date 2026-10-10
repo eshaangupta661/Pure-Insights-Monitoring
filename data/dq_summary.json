@@ -1,0 +1,122 @@
+{
+  "sourceRows": 2000,
+  "rules": [
+    {
+      "ruleId": "DQ01",
+      "ruleName": "Orphaned owner",
+      "severity": "high",
+      "rowsAffected": 245,
+      "treatment": "Owner 'nan', 'ORPHANED_REPORT' or empty (trimmed, case-insensitive) normalized to NULL; flag ORPHANED",
+      "flag": "ORPHANED",
+      "sampleReportIds": [
+        "RPT_203",
+        "RPT_211",
+        "RPT_214"
+      ]
+    },
+    {
+      "ruleId": "DQ02",
+      "ruleName": "Negative Snowflake credits",
+      "severity": "high",
+      "rowsAffected": 24,
+      "treatment": "Copied to QUARANTINE; credits_clean = NULL; excluded from cost attribution",
+      "flag": "NEGATIVE_CREDITS",
+      "sampleReportIds": [
+        "RPT_290",
+        "RPT_295",
+        "RPT_292"
+      ]
+    },
+    {
+      "ruleId": "DQ03",
+      "ruleName": "Slow load (> 15s)",
+      "severity": "medium",
+      "rowsAffected": 1490,
+      "treatment": "Kept; alert trigger (WARNING > 15s, CRITICAL > 30s)",
+      "flag": "SLOW_LOAD",
+      "sampleReportIds": [
+        "RPT_200",
+        "RPT_202",
+        "RPT_203"
+      ]
+    },
+    {
+      "ruleId": "DQ04",
+      "ruleName": "AWS cost per view outlier",
+      "severity": "medium",
+      "rowsAffected": 30,
+      "treatment": "Kept; flag COST_MISMATCH (robust z > 3.5 on ln(aws/views), or views < 50 and AWS > $300)",
+      "flag": "COST_MISMATCH",
+      "sampleReportIds": [
+        "RPT_222",
+        "RPT_236",
+        "RPT_223"
+      ]
+    },
+    {
+      "ruleId": "DQ05",
+      "ruleName": "Zero monthly views",
+      "severity": "medium",
+      "rowsAffected": 4,
+      "treatment": "Kept; unit cost = NULL (NULLIF); flag ZERO_VIEWS",
+      "flag": "ZERO_VIEWS",
+      "sampleReportIds": [
+        "RPT_223",
+        "RPT_278",
+        "RPT_299"
+      ]
+    },
+    {
+      "ruleId": "DQ06",
+      "ruleName": "Impossible concurrency",
+      "severity": "low",
+      "rowsAffected": 93,
+      "treatment": "Kept; concurrent_user_peak > monthly_active_views; flag IMPOSSIBLE_CONCURRENCY",
+      "flag": "IMPOSSIBLE_CONCURRENCY",
+      "sampleReportIds": [
+        "RPT_211",
+        "RPT_214",
+        "RPT_217"
+      ]
+    },
+    {
+      "ruleId": "DQ07",
+      "ruleName": "Unknown refresh status",
+      "severity": "low",
+      "rowsAffected": 100,
+      "treatment": "Kept as its own status bucket; raises an INFO alert",
+      "flag": "UNKNOWN_REFRESH",
+      "sampleReportIds": [
+        "RPT_218",
+        "RPT_241",
+        "RPT_285"
+      ]
+    },
+    {
+      "ruleId": "DQ08",
+      "ruleName": "Slow but healthy",
+      "severity": "info",
+      "rowsAffected": 1004,
+      "treatment": "Kept; refresh SUCCESS but load > 15s; flag SLOW_BUT_HEALTHY",
+      "flag": "SLOW_BUT_HEALTHY",
+      "sampleReportIds": [
+        "RPT_200",
+        "RPT_202",
+        "RPT_205"
+      ]
+    },
+    {
+      "ruleId": "DQ09",
+      "ruleName": "Ownership change (event)",
+      "severity": "info",
+      "rowsAffected": 1782,
+      "treatment": "Expected event, not a defect: row owner differs from the previous snapshot; owner_history kept; current_owner = latest snapshot owner",
+      "flag": "OWNER_CHANGED",
+      "sampleReportIds": [
+        "RPT_201",
+        "RPT_202",
+        "RPT_203"
+      ]
+    }
+  ]
+}

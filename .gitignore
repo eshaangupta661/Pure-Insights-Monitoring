@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+*.duckdb
+*.duckdb.wal
+coverage/
+*.log
+.DS_Store
