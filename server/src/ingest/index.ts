@@ -1,6 +1,9 @@
 /*
  * `npm run ingest`: CSV → data/warehouse.duckdb + data/dq_summary.json.
  *
+ * After loading, it runs the /sql suite (02–08) and stores its results; any FAIL in
+ * RECONCILIATION or DQ_CHECKS fails the ingest (and therefore the Render build).
+ *
  * Builds into data/warehouse.tmp.duckdb and only renames it over warehouse.duckdb after
  * everything succeeded, so a failed run never leaves a half-built warehouse. It touches no other
  * files in data/ beyond those (and their .wal side files).
@@ -9,10 +12,20 @@ import fs from 'node:fs';
 import type { DqSummary } from '@pic/shared';
 import { all, closeDb, openDb } from '../db.js';
 import { DQ_SUMMARY_PATH, RAW_CSV, WAREHOUSE_PATH } from '../paths.js';
+import { reconciliationTable, runSqlSuite, type SqlResults } from '../sql/runner.js';
 import { runIngest } from './pipeline.js';
 
 const TMP_PATH = WAREHOUSE_PATH.replace(/\.duckdb$/, '.tmp.duckdb');
-const TABLES = ['RAW_REPORT_SNAPSHOTS', 'REPORT_SNAPSHOTS', 'REPORTS', 'QUARANTINE', 'DQ_RESULTS'];
+const TABLES = [
+  'PARAMS',
+  'RAW_REPORT_SNAPSHOTS',
+  'REPORT_SNAPSHOTS',
+  'REPORTS',
+  'QUARANTINE',
+  'DQ_RESULTS',
+  'ACCOUNT_USAGE.QUERY_HISTORY',
+  'ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY',
+];
 
 class LockedError extends Error {}
 
@@ -30,7 +43,13 @@ function isLockError(err: unknown): boolean {
   return code === 'EBUSY' || code === 'EPERM' || code === 'EACCES';
 }
 
-async function build(): Promise<{ summary: DqSummary; counts: Record<string, number> }> {
+interface BuildResult {
+  summary: DqSummary;
+  counts: Record<string, number>;
+  sql: SqlResults;
+}
+
+async function build(): Promise<BuildResult> {
   removeIfExists(TMP_PATH);
   removeIfExists(`${TMP_PATH}.wal`);
 
@@ -38,6 +57,7 @@ async function build(): Promise<{ summary: DqSummary; counts: Record<string, num
   const db = await openDb(TMP_PATH);
   try {
     const summary = await runIngest(db.conn, csv);
+    const sql = await runSqlSuite(db.conn);
     const counts: Record<string, number> = {};
     for (const table of TABLES) {
       const [row] = await all<{ n: number }>(
@@ -46,7 +66,7 @@ async function build(): Promise<{ summary: DqSummary; counts: Record<string, num
       );
       counts[table] = row?.n ?? 0;
     }
-    return { summary, counts };
+    return { summary, counts, sql };
   } finally {
     closeDb(db); // checkpoints and releases the file before the rename
   }
@@ -63,7 +83,7 @@ function promote(): void {
   }
 }
 
-function printSummary(summary: DqSummary, counts: Record<string, number>): void {
+function printSummary({ summary, counts, sql }: BuildResult): void {
   console.log(`\nIngested ${summary.sourceRows} rows → ${WAREHOUSE_PATH}\n`);
   console.table(
     summary.rules.map((r) => ({
@@ -77,14 +97,16 @@ function printSummary(summary: DqSummary, counts: Record<string, number>): void 
   );
   console.table(Object.entries(counts).map(([table, rows]) => ({ table, rows })));
   console.log(`DQ summary written to ${DQ_SUMMARY_PATH}`);
+  console.log(`\nSQL suite 02–08 verified and stored in ${sql.durationMs} ms. Reconciliation:`);
+  console.table(reconciliationTable(sql));
 }
 
 async function main(): Promise<void> {
   try {
-    const { summary, counts } = await build();
+    const result = await build();
     promote();
-    fs.writeFileSync(DQ_SUMMARY_PATH, `${JSON.stringify(summary, null, 2)}\n`);
-    printSummary(summary, counts);
+    fs.writeFileSync(DQ_SUMMARY_PATH, `${JSON.stringify(result.summary, null, 2)}\n`);
+    printSummary(result);
   } catch (err) {
     try {
       removeIfExists(TMP_PATH);

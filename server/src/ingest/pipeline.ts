@@ -8,6 +8,7 @@ import {
 } from '@duckdb/node-api';
 import type { DqFlag, DqSummary } from '@pic/shared';
 import { config } from '../config.js';
+import { loadSql } from '../sql/translate.js';
 import { CSV_COLUMNS, parseCsv, type RawRow } from './csv.js';
 import { toSnapshotRow, type SnapshotRow } from './normalize.js';
 import {
@@ -17,6 +18,7 @@ import {
   hasNegativeCredits,
   resolveCurrentOwner,
 } from './rules.js';
+import { writeSnowflakeSim } from './snowflake-sim.js';
 
 const SAMPLES_PER_RULE = 3;
 
@@ -33,54 +35,6 @@ export interface ReportRecord {
   owner_history: (string | null)[];
   owner_change_count: number;
 }
-
-const DDL = `
-CREATE OR REPLACE TABLE RAW_REPORT_SNAPSHOTS (
-  row_idx INTEGER NOT NULL,
-  ${CSV_COLUMNS.map((c) => `${c} VARCHAR`).join(',\n  ')}
-);
-CREATE OR REPLACE TABLE REPORT_SNAPSHOTS (
-  row_idx INTEGER NOT NULL,
-  snapshot_idx INTEGER NOT NULL,
-  snapshot_date DATE NOT NULL,
-  report_id VARCHAR NOT NULL,
-  report_name VARCHAR NOT NULL,
-  owner_email VARCHAR,
-  last_refresh_status VARCHAR NOT NULL,
-  monthly_active_views INTEGER NOT NULL,
-  snowflake_credits_consumed DOUBLE NOT NULL,
-  credits_clean DOUBLE,
-  avg_load_time_sec DOUBLE NOT NULL,
-  aws_hosting_cost_usd DOUBLE NOT NULL,
-  query_count_last_30d INTEGER NOT NULL,
-  concurrent_user_peak INTEGER NOT NULL,
-  dq_flags VARCHAR[] NOT NULL
-);
-CREATE OR REPLACE TABLE QUARANTINE (
-  row_idx INTEGER NOT NULL,
-  report_id VARCHAR NOT NULL,
-  snapshot_idx INTEGER NOT NULL,
-  rule_id VARCHAR NOT NULL,
-  column_name VARCHAR NOT NULL,
-  raw_value VARCHAR NOT NULL,
-  reason VARCHAR NOT NULL
-);
-CREATE OR REPLACE TABLE REPORTS (
-  report_id VARCHAR PRIMARY KEY,
-  report_name VARCHAR NOT NULL,
-  current_owner VARCHAR,
-  is_orphaned BOOLEAN NOT NULL,
-  owner_history VARCHAR[] NOT NULL,
-  owner_change_count INTEGER NOT NULL
-);
-CREATE OR REPLACE TABLE DQ_RESULTS (
-  rule_id VARCHAR PRIMARY KEY,
-  rule_name VARCHAR NOT NULL,
-  severity VARCHAR NOT NULL,
-  rows_affected INTEGER NOT NULL,
-  treatment VARCHAR NOT NULL
-);
-`;
 
 /**
  * Checks the CSV really is SNAPSHOT_COUNT stacked blocks with every report exactly once per block,
@@ -194,14 +148,19 @@ async function withAppender(
   }
 }
 
-/** Builds all Phase 1 tables in `conn` from the CSV text and returns the DQ summary. */
+/**
+ * Builds the warehouse in `conn` from the CSV text: PARAMS and all tables (/sql/00, /sql/01), the
+ * cleaned Phase 1 tables, and the simulated ACCOUNT_USAGE data. Returns the DQ summary.
+ */
 export async function runIngest(conn: DuckDBConnection, csvText: string): Promise<DqSummary> {
   const raw = parseCsv(csvText);
   const rows = flagRows(raw);
   const reports = buildReports(rows);
   const summary = summarize(rows);
 
-  await conn.run(DDL);
+  // Parameters and every table come from /sql so the DDL is documented and executed in one place.
+  await conn.run(loadSql('00_setup_parameters.sql'));
+  await conn.run(loadSql('01_schema.sql'));
 
   await withAppender(conn, 'RAW_REPORT_SNAPSHOTS', (a) => {
     raw.forEach((r, i) => {
@@ -267,6 +226,8 @@ export async function runIngest(conn: DuckDBConnection, csvText: string): Promis
       a.endRow();
     }
   });
+
+  await writeSnowflakeSim(conn, rows);
 
   return summary;
 }

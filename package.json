@@ -19,7 +19,7 @@
     "typecheck": "npm run build -w @pic/shared && npm run typecheck -w @pic/server && npm run typecheck -w @pic/client",
     "ingest": "npm run ingest -w @pic/server",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",

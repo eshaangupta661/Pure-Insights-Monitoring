@@ -40,9 +40,22 @@ export interface ReportDetail extends ReportSummary {
   ownerHistory: string[];
 }
 
-/** filled in Phase 2 */
+/**
+ * One report's attributed Snowflake cost over all snapshots (/sql/04_report_attribution.sql).
+ * reportId 'UNATTRIBUTED' is the always-present line for untagged / unknown-report queries.
+ * Credits are metered credits; active + overhead = attributed under the simulated overhead rate.
+ * Unrounded; round at presentation.
+ */
 export interface CostRow {
   reportId: string;
+  reportName: string;
+  currentOwner: string | null;
+  queryCount: number;
+  attributedCredits: number;
+  activeCredits: number;
+  overheadCredits: number;
+  attributedCostUsd: number;
+  shareOfTotal: number | null;
 }
 
 export type DqRuleId =
