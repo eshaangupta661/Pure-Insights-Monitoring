@@ -31,8 +31,13 @@ import type { ReplayPosition } from './clock.js';
 import { SEVERITY_RANK, type Reading } from './rules.js';
 
 export interface AlertEvents extends TickEvents {
-  /** True when the state was rebuilt; on a new cycle, clients should re-fetch everything. */
+  /** True when the state was rebuilt (replayed from tick 0) rather than stepped forward. */
   rebuilt: boolean;
+  /**
+   * True when the rebuild started from nothing (first sync, or the replay wrapped to a new
+   * cycle): `opened` then lists every alert, and clients should replace their list instead.
+   */
+  reset: boolean;
 }
 
 export interface Incident {
@@ -67,7 +72,7 @@ export interface IncidentResult {
 }
 
 const STATUS_ORDER: Record<AlertStatus, number> = { OPEN: 0, ACKNOWLEDGED: 1, RESOLVED: 2 };
-const NO_EVENTS = (): AlertEvents => ({ opened: [], updated: [], rebuilt: false });
+const NO_EVENTS = (): AlertEvents => ({ opened: [], updated: [], rebuilt: false, reset: false });
 
 /** Fields whose change is worth an `alert:updated` (not lastSeenTick/value, which move every tick). */
 const signature = (a: Alert) => `${a.status}|${a.severity}|${a.ackedBy ?? ''}|${a.synthetic}`;
@@ -164,7 +169,12 @@ export class AlertEngine {
     this.store = store;
     this.at = { ...pos };
 
-    const events: AlertEvents = { opened: [], updated: [], rebuilt: true };
+    const events: AlertEvents = {
+      opened: [],
+      updated: [],
+      rebuilt: true,
+      reset: previous === null,
+    };
     const before = new Map((previous?.all() ?? []).map((a) => [a.id, signature(a)]));
     for (const alert of store.all()) {
       const was = before.get(alert.id);

@@ -2057,7 +2057,7 @@ paths:
       description: |-
         Roles: admin, owner.
 
-        OPEN → ACKNOWLEDGED (idempotent if already acknowledged). Owners may ack only alerts on their own reports; others are 404. Audit-logged.
+        OPEN → ACKNOWLEDGED (idempotent if already acknowledged). Owners may ack only alerts on their own reports; others are 404. Audit-logged, then broadcast as `alert:updated`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2147,7 +2147,7 @@ paths:
       description: |-
         Roles: admin.
 
-        Moves only the clock’s time anchor, so the tick never jumps and nothing is counted. In memory: a restart resumes at speed 1 from wall time. Audit-logged.
+        Moves only the clock’s time anchor, so the tick never jumps and nothing is counted. In memory: a restart resumes at speed 1 from wall time. Audit-logged; broadcasts `tick`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2191,7 +2191,7 @@ paths:
       description: |-
         Roles: admin.
 
-        LATENCY_SPIKE sets the report’s load time to INCIDENT_LATENCY_SEC (CRITICAL); REFRESH_FAILED sets its refresh status to FAILED. The resulting alert has `synthetic: true` and bypasses the reopen cooldown. Kept in memory for the current replay cycle. Repeating an identical incident at the same tick is a no-op; at most 200 distinct incidents per cycle. Audit-logged.
+        LATENCY_SPIKE sets the report’s load time to INCIDENT_LATENCY_SEC (CRITICAL); REFRESH_FAILED sets its refresh status to FAILED. The resulting alert has `synthetic: true` and bypasses the reopen cooldown. Kept in memory for the current replay cycle and broadcast to WebSocket clients as soon as it is audited (not deferred to the next tick). Repeating an identical incident at the same tick is a no-op; at most 200 distinct incidents per cycle. Audit-logged.
       security:
         - cookieAuth: []
         - bearerAuth: []

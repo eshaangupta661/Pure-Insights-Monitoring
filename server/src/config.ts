@@ -118,7 +118,7 @@ export const config = {
   /** Allowed replay speed multipliers for POST /admin/replay {action:'speed'}. */
   REPLAY_SPEEDS: [1, 2, 5, 10],
   /** Latency (s) of a synthetic LATENCY_SPIKE incident; above LATENCY_CRITICAL_SEC. */
-  INCIDENT_LATENCY_SEC: 45,
+  INCIDENT_LATENCY_SEC: 55,
   /** Distinct incidents kept per replay cycle (identical ones are deduplicated); then 429. */
   INCIDENTS_MAX_PER_CYCLE: 200,
 

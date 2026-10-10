@@ -9,12 +9,10 @@ import {
   viewerReportDetailSchema,
   viewerReportSummarySchema,
 } from '../api/schemas.js';
-import { syncedAlerts } from '../deps.js';
 import { notFound } from '../http/errors.js';
 import { pageSchema } from '../http/pagination.js';
 import { defineRoute } from '../http/route.js';
 import { getDataQuality } from '../repos/dataQuality.js';
-import { getOverview } from '../repos/overview.js';
 import { setOwnerOverride } from '../repos/owners.js';
 import { getReport, listReports } from '../repos/reports.js';
 
@@ -34,11 +32,7 @@ export const reportRoutes = [
     access: 'authenticated',
     response: overviewSchema,
     viewerResponse: overviewSchema,
-    handler: async ({ deps, scope }) => {
-      const alerts = await syncedAlerts(deps);
-      const kpis = await getOverview(deps.warehouse, scope, deps.clock.tick());
-      return { ...kpis, alerts: alerts.counts(scope) };
-    },
+    handler: ({ deps, scope }) => deps.realtime.overview(scope),
   }),
 
   defineRoute({
@@ -90,15 +84,10 @@ export const reportRoutes = [
     handler: async ({ deps, user, scope, params, body }) => {
       const change = await setOwnerOverride(deps.warehouse, scope, user, params.id, body);
       if (!change) throw notFound(`Report ${params.id}`);
-      // Alerts resolve their owner at read time, so this moves the report's alerts too. The
-      // override is already committed: if the refresh fails, don't report failure; mark the
-      // map stale so the next alert read retries it.
-      try {
-        await deps.alerts.refreshOwners(deps.warehouse);
-      } catch (err) {
-        console.error('Owner map refresh failed after an override; will retry', err);
-        deps.alerts.markOwnersStale();
-      }
+      // Alerts resolve their owner at read time, so this moves the report's alerts too, and
+      // every socket room gets a fresh scoped snapshot. The override is already committed: if
+      // the refresh fails, it isn't reported as a failure; the next sync retries it.
+      await deps.realtime.ownersChanged();
       const report = await getReport(deps.warehouse, scope, deps.clock.tick(), params.id);
       if (!report) throw notFound(`Report ${params.id}`);
       return report;

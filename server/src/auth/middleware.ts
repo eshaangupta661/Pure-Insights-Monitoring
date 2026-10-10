@@ -2,7 +2,7 @@ import type { Request, RequestHandler, Response } from 'express';
 import type { AuthUser, Role } from '@pic/shared';
 import { config } from '../config.js';
 import { HttpError } from '../http/errors.js';
-import { verifyToken } from './jwt.js';
+import { verifySession } from './jwt.js';
 import { findUser } from './users.js';
 
 /** Where the session token came from. Only cookie sessions are exposed to CSRF. */
@@ -28,10 +28,28 @@ export function authenticate(req: Request): { user: AuthUser; via: CredentialSou
   const bearer = bearerToken(req);
   const token = bearer ?? cookieToken(req);
   if (!token) return null;
-  const claims = verifyToken(token);
-  const user = claims && findUser(claims.email);
-  if (!user || user.role !== claims?.role) return null;
-  return { user, via: bearer ? 'bearer' : 'cookie' };
+  const session = authenticateToken(token);
+  return session && { user: session.user, via: bearer ? 'bearer' : 'cookie' };
+}
+
+/**
+ * A session token's user, checked against the seeded users (same rules as authenticate()), plus
+ * when it expires. The Socket.IO handshake uses it directly.
+ */
+export function authenticateToken(token: string): { user: AuthUser; expiresAtMs: number } | null {
+  const session = verifySession(token);
+  const user = session && findUser(session.user.email);
+  if (!session || !user || user.role !== session.user.role) return null;
+  return { user, expiresAtMs: session.expiresAtMs };
+}
+
+/** True when `origin` is a URL whose host is exactly `host` (the request's Host header). */
+export function originMatchesHost(origin: string, host: string | undefined): boolean {
+  try {
+    return host !== undefined && new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 /** 401 unless signed in; puts the user on `res.locals.user`. Routes use defineRoute instead. */
@@ -82,13 +100,7 @@ export function requireSameOrigin(enforce: boolean): RequestHandler {
       }
       return next();
     }
-    let originHost: string | null;
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      originHost = null;
-    }
-    if (originHost === null || originHost !== req.get('host')) {
+    if (!originMatchesHost(origin, req.get('host'))) {
       throw new HttpError(403, 'BAD_ORIGIN', 'Cross-origin request rejected');
     }
     next();

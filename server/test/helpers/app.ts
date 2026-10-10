@@ -4,7 +4,7 @@ import { createApp } from '../../src/app.js';
 import { config } from '../../src/config.js';
 import { Warehouse } from '../../src/data/warehouse.js';
 import { all, closeDb, openDb, type Db } from '../../src/db.js';
-import type { ApiDeps } from '../../src/deps.js';
+import { createDeps, type ApiDeps } from '../../src/deps.js';
 import { runIngest } from '../../src/ingest/pipeline.js';
 import { RAW_CSV } from '../../src/paths.js';
 import { ReplayClock } from '../../src/realtime/clock.js';
@@ -59,7 +59,7 @@ export async function buildTestApp(): Promise<TestApp> {
   const warehouse = new Warehouse(db.conn);
   const clock = testClock();
   const alerts = await AlertEngine.load(warehouse);
-  const deps: ApiDeps = { warehouse, clock: clock.clock, alerts };
+  const deps = createDeps(warehouse, clock.clock, alerts);
   return {
     app: createApp(deps),
     db,

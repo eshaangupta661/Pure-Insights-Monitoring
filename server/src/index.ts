@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { config } from './config.js';
 import { Warehouse } from './data/warehouse.js';
 import { closeDb, openDb } from './db.js';
+import { createDeps } from './deps.js';
 import { WAREHOUSE_PATH } from './paths.js';
 import { ReplayClock } from './realtime/clock.js';
 import { AlertEngine } from './realtime/engine.js';
@@ -44,12 +45,26 @@ async function main(): Promise<void> {
   const clock = new ReplayClock();
   // Readings load once; from here on the alert state is rebuilt synchronously from them.
   const alerts = await AlertEngine.load(warehouse);
-  alerts.syncTo(clock.position());
+  const deps = createDeps(warehouse, clock, alerts);
+  await deps.realtime.sync();
 
-  const server = createServer({ warehouse, clock, alerts });
+  const { server, io } = createServer(deps);
   server.listen(config.port, () => {
     console.log(`Server listening on http://localhost:${config.port}`);
+    deps.realtime.start();
   });
+
+  const shutdown = (signal: string) => {
+    console.log(`${signal}: shutting down`);
+    deps.realtime.stop();
+    // io.close() also closes the http server.
+    void io.close(() => {
+      closeDb(db);
+      process.exit(0);
+    });
+  };
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
 }
 
 await main();

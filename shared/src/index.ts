@@ -54,6 +54,38 @@ export interface ReplayState {
 export type ReplayCommand =
   { action: 'pause' } | { action: 'resume' } | { action: 'speed'; value: number };
 
+/* ---- WebSocket (Socket.IO namespace ALERTS_NAMESPACE; see docs/WEBSOCKET.md) ------------- */
+
+export const ALERTS_NAMESPACE = '/alerts';
+
+/** `tick`: the replay moved to a new snapshot, or was paused/resumed. */
+export interface TickEvent {
+  tick: number;
+  snapshotDate: string;
+  paused: boolean;
+}
+
+/** client → server `alert:ack`. */
+export interface AlertAckRequest {
+  alertId: string;
+}
+
+/** The `alert:ack` callback. Error codes match the REST API's. */
+export type AlertAckResponse = { ok: true; alert: Alert } | { ok: false; error: ApiError['error'] };
+
+export interface ServerToClientEvents {
+  tick: (event: TickEvent) => void;
+  /** Active (OPEN + ACKNOWLEDGED) alerts in scope; replaces the client's list. */
+  'alert:snapshot': (alerts: Alert[]) => void;
+  'alert:opened': (alert: Alert) => void;
+  'alert:updated': (alert: Alert) => void;
+  'kpi:update': (kpis: OverviewKpis) => void;
+}
+
+export interface ClientToServerEvents {
+  'alert:ack': (request: AlertAckRequest, callback: (response: AlertAckResponse) => void) => void;
+}
+
 export type IncidentKind = 'LATENCY_SPIKE' | 'REFRESH_FAILED';
 
 export interface IncidentRequest {

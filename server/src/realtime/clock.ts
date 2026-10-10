@@ -63,6 +63,13 @@ export class ReplayClock {
     return this.position().tick;
   }
 
+  /** Wall-clock ms until the next tick boundary at the current speed; null while paused. */
+  msUntilNextTick(): number | null {
+    if (this.paused) return null;
+    const into = ((this.virtualNow() % config.TICK_MS) + config.TICK_MS) % config.TICK_MS;
+    return (config.TICK_MS - into) / this.speed;
+  }
+
   /** Virtual epoch ms at which `position` began; used as a deterministic alert openedAt. */
   static startOf({ tick, cycle }: ReplayPosition): number {
     return (cycle * config.SNAPSHOT_COUNT + tick) * config.TICK_MS;

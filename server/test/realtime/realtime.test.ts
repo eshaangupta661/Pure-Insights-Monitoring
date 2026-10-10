@@ -73,6 +73,18 @@ describe('ReplayClock', () => {
     expect(clock.state()).toMatchObject({ tick: 5, paused: false, speed: 1 });
   });
 
+  it('msUntilNextTick: wall time to the next boundary at the current speed; null while paused', () => {
+    const { clock, move } = at(3 * TICK + TICK / 4);
+    expect(clock.msUntilNextTick()).toBe((3 * TICK) / 4);
+    clock.setSpeed(10);
+    expect(clock.msUntilNextTick()).toBe((3 * TICK) / 40);
+    move((3 * TICK) / 40);
+    expect(clock.tick()).toBe(4);
+    expect(clock.msUntilNextTick()).toBe(TICK / 10);
+    clock.pause();
+    expect(clock.msUntilNextTick()).toBeNull();
+  });
+
   it('pause/resume are idempotent', () => {
     const { clock, move } = at(2 * TICK);
     clock.resume();
@@ -171,7 +183,7 @@ describe('AlertStore lifecycle', () => {
       slow(20),
       healthy,
       healthy,
-      reading({ loadTimeSec: 45, synthetic: true }),
+      reading({ loadTimeSec: config.INCIDENT_LATENCY_SEC, synthetic: true }),
     ]);
     expect(latency().at(-1)).toMatchObject({
       openedTick: 3,
@@ -224,6 +236,30 @@ describe('AlertStore lifecycle', () => {
     expect(store.ack('nope', 'a@x')).toEqual({ ok: false, reason: 'NOT_FOUND' });
   });
 
+  it('75% of rows breach 15 s → one open alert per report/rule, not one per tick', () => {
+    // 100 reports × 20 ticks; slow unless (r + t) % 4 === 0: 75% of readings breach, and no
+    // report is ever healthy two ticks in a row, so nothing auto-resolves.
+    const REPORTS = 100;
+    const store = new AlertStore(0);
+    let opened = 0;
+    let breaching = 0;
+    for (let t = 0; t < N; t++) {
+      const readings = Array.from({ length: REPORTS }, (_, r) => {
+        const isSlow = (r + t) % 4 !== 0;
+        if (isSlow) breaching++;
+        return reading({ reportId: `RPT_${r}`, loadTimeSec: isSlow ? 20 : 5 });
+      });
+      opened += store.applyTick(t, readings).opened.length;
+      // at every tick: at most one active alert per (report, rule)
+      const active = store.all().filter((a) => a.status !== 'RESOLVED');
+      expect(new Set(active.map((a) => `${a.reportId}|${a.ruleId}`)).size).toBe(active.length);
+    }
+    expect(breaching).toBe(0.75 * REPORTS * N);
+    expect(opened).toBe(REPORTS);
+    expect(store.all()).toHaveLength(REPORTS);
+    expect(store.all().every((a) => a.ruleId === 'LATENCY' && a.status === 'OPEN')).toBe(true);
+  });
+
   it('keys are independent per (report, rule)', () => {
     const store = new AlertStore(0);
     store.applyTick(0, [
@@ -273,6 +309,14 @@ describe('AlertEngine', () => {
     );
   });
 
+  it('reset: set when the state starts from nothing (first sync, new cycle), not on a same-cycle rebuild', () => {
+    const engine = make();
+    expect(engine.syncTo({ cycle: 3, tick: 2 })).toMatchObject({ rebuilt: true, reset: true });
+    expect(engine.syncTo({ cycle: 3, tick: 3 })).toMatchObject({ rebuilt: false, reset: false });
+    expect(engine.rebuild({ cycle: 3, tick: 3 })).toMatchObject({ rebuilt: true, reset: false });
+    expect(engine.syncTo({ cycle: 4, tick: 0 })).toMatchObject({ rebuilt: true, reset: true });
+  });
+
   it('a repeated syncTo at the same tick is a no-op', () => {
     const engine = make();
     engine.syncTo({ cycle: 3, tick: 2 });
@@ -281,6 +325,7 @@ describe('AlertEngine', () => {
       opened: [],
       updated: [],
       rebuilt: false,
+      reset: false,
     });
     expect(engine.list(ALL)).toEqual(before);
   });
@@ -407,7 +452,7 @@ describe('AlertEngine', () => {
     const repeat = engine.injectIncident('RPT_2', 'LATENCY_SPIKE');
     expect(first.incident).not.toBeNull();
     expect(repeat).toMatchObject({ incident: null, alert: { id: first.alert.id } });
-    expect(repeat.events).toEqual({ opened: [], updated: [], rebuilt: false });
+    expect(repeat.events).toEqual({ opened: [], updated: [], rebuilt: false, reset: false });
     engine.injectIncident('RPT_2', 'REFRESH_FAILED');
     engine.injectIncident('RPT_1', 'REFRESH_FAILED');
     expect(() => engine.injectIncident('RPT_1', 'LATENCY_SPIKE')).toThrow(IncidentLimitError);

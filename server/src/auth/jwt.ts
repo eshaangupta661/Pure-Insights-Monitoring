@@ -32,10 +32,19 @@ export function signToken(
 
 /** The user in a valid, unexpired token signed with our secret; null for anything else. */
 export function verifyToken(token: string): AuthUser | null {
+  return verifySession(token)?.user ?? null;
+}
+
+/** verifyToken plus the expiry (epoch ms), for long-lived sessions such as a WebSocket. */
+export function verifySession(token: string): { user: AuthUser; expiresAtMs: number } | null {
   try {
     const payload = jwt.verify(token, config.jwtSecret, { algorithms: [ALGORITHM] });
     const claims = claimsSchema.safeParse(payload);
-    return claims.success ? { email: claims.data.sub, role: claims.data.role } : null;
+    if (!claims.success) return null;
+    return {
+      user: { email: claims.data.sub, role: claims.data.role },
+      expiresAtMs: claims.data.exp * 1000,
+    };
   } catch {
     return null;
   }

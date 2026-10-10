@@ -185,7 +185,7 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
 
 - **Dedup:** one alert per (report, rule) while it is active.
 - **Escalation:** severity only escalates; `value` and `message` hold the peak while active.
-  Each escalation emits an update (`alert:updated` once sockets land).
+  Each escalation is broadcast as `alert:updated` (see [WEBSOCKET.md](WEBSOCKET.md)).
 - **Acknowledged alerts stay acknowledged.** If an ACKNOWLEDGED alert escalates (WARNING →
   CRITICAL), its severity, threshold, value and message change and an update is emitted, but
   its status stays ACKNOWLEDGED and `ackedBy` is kept. It does not reopen and needs no second
@@ -195,21 +195,26 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
   bypass it**: an incident on a key that is cooling down opens a new alert immediately, so a demo
   always produces one. Real snapshot readings never bypass it.
 - **Determinism:** ids are `<cycle>-<reportId>-<ruleId>-<openedTick>`. The state is rebuilt by
-  replaying ticks 0..now, so a restart reproduces it.
+  replaying ticks 0..now, so a restart reproduces everything derived from the snapshots. Acks
+  and injected incidents are kept in memory, so a restart forgets them.
+- **Live updates:** every change (opened, escalated, acknowledged, resolved) is pushed over
+  Socket.IO, scoped like the REST responses. See [WEBSOCKET.md](WEBSOCKET.md).
 
 - `GET /alerts?status=&severity=&page=&pageSize=` lists the current cycle's alerts: active
   first, then most severe, then most recently seen.
 - `POST /alerts/:id/ack` (admin, or owner for their own reports) moves an alert OPEN →
   ACKNOWLEDGED and is idempotent. It returns 404 for an alert outside your scope and 409 once
-  the alert has resolved.
+  the alert has resolved. The ack is audit-logged and then broadcast as `alert:updated`; the
+  socket event `alert:ack` does the same.
 - `GET /admin/replay` returns `{ tick, cycle, snapshotDate, paused, speed, tickMs }`.
 - `POST /admin/replay` takes `{ "action": "pause" | "resume" }` or
   `{ "action": "speed", "value": 1 | 2 | 5 | 10 }`. Only the clock's time anchor moves, so the
   tick never jumps.
 - `POST /admin/incidents` takes
   `{ "reportId": "RPT_203", "kind": "LATENCY_SPIKE" | "REFRESH_FAILED" }` and returns 201 with
-  the resulting alert. It adds a synthetic reading at the current tick (load time 45 s, or
-  status FAILED). The alert has `synthetic: true` when the incident opened it, and incidents
+  the resulting alert. It adds a synthetic reading at the current tick (load time 55 s, the
+  dataset's maximum, or status FAILED). It is broadcast as soon as its audit row is written,
+  not deferred to the next tick, so it works while the replay is paused. The alert has `synthetic: true` when the incident opened it, and incidents
   bypass the cooldown. Repeating an identical incident (same report, kind and tick) is a no-op
   that returns the same alert. At most 200 distinct incidents are kept per replay cycle; beyond
   that the endpoint returns `429 RATE_LIMITED` until the replay wraps.
