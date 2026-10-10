@@ -3,7 +3,7 @@ import request from 'supertest';
 import type { Role } from '@pic/shared';
 import { signToken } from '../../src/auth/jwt.js';
 
-/** The public demo credentials from CLAUDE.md "Roles". */
+/** The public demo credentials (README). */
 export const DEMO_USERS = {
   admin: { email: 'admin@pureinsights.dev', password: 'Admin@123' },
   owner: { email: 'user_3@company.com', password: 'Owner@123' },

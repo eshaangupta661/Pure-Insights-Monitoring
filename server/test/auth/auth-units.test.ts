@@ -6,7 +6,7 @@ import { scopeFor, scopeMatches, scopeSql } from '../../src/auth/scope.js';
 import { findUser, verifyCredentials } from '../../src/auth/users.js';
 import { config } from '../../src/config.js';
 
-/** The public demo credentials from CLAUDE.md "Roles". */
+/** The public demo credentials (README). */
 const DEMO = [
   { email: 'admin@pureinsights.dev', password: 'Admin@123', role: 'admin' },
   { email: 'user_3@company.com', password: 'Owner@123', role: 'owner' },

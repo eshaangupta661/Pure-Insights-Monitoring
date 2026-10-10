@@ -29,7 +29,7 @@ interface Row {
 }
 
 /**
- * The access rules from CLAUDE.md ("Roles", "REST endpoints"), written out independently of the
+ * The access rules (docs/API.md roles and endpoints), written out independently of the
  * route declarations. Every endpoint × {anonymous, viewer, owner, admin}:
  *   anonymous on a protected route → 401; a signed-in role not allowed → 403; allowed → success.
  * Rows run in order, so state-changing ones are arranged to stay valid (ack before incidents).

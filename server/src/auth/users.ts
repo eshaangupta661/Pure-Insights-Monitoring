@@ -6,7 +6,7 @@ interface SeededUser extends AuthUser {
 }
 
 /**
- * The three demo accounts from CLAUDE.md ("Roles"). Their passwords are public demo credentials,
+ * The three demo accounts (README, "Demo credentials"). Their passwords are public demo credentials,
  * documented in the README; only bcrypt hashes (cost 10) live here. Emails are stored lowercase,
  * matching how ingest normalizes owner emails, so the owner's email scopes their reports exactly.
  */
