@@ -1138,6 +1138,10 @@ components:
           type: boolean
         speed:
           type: number
+        speeds:
+          type: array
+          items:
+            type: number
         tickMs:
           type: integer
       required:
@@ -1146,6 +1150,7 @@ components:
         - snapshotDate
         - paused
         - speed
+        - speeds
         - tickMs
     ReplayCommand:
       oneOf:

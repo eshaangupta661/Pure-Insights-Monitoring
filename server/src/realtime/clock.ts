@@ -101,6 +101,7 @@ export class ReplayClock {
       snapshotDate: snapshotDateFor(tick),
       paused: this.paused,
       speed: this.speed,
+      speeds: [...config.REPLAY_SPEEDS],
       tickMs: config.TICK_MS,
     };
   }

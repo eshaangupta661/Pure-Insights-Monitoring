@@ -286,6 +286,7 @@ describe('alerts API', () => {
         snapshotDate: '2026-10-10',
         paused: false,
         speed: 1,
+        speeds: [...config.REPLAY_SPEEDS],
         tickMs: config.TICK_MS,
       });
       expect((await owner.get('/api/v1/admin/replay')).status).toBe(403);

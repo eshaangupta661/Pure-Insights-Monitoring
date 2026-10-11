@@ -193,6 +193,7 @@ export const replayStateSchema = z
     snapshotDate: isoDate,
     paused: z.boolean(),
     speed: z.number(),
+    speeds: z.array(z.number()),
     tickMs: z.number().int(),
   })
   .openapi('ReplayState');

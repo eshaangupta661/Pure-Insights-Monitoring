@@ -48,6 +48,8 @@ export interface ReplayState {
   snapshotDate: string;
   paused: boolean;
   speed: number;
+  /** Speed multipliers the `speed` command accepts (REPLAY_SPEEDS). */
+  speeds: number[];
   tickMs: number;
 }
 
