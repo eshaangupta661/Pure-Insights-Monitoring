@@ -16,11 +16,11 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-gray-200 bg-white p-5 shadow-sm ${className}`}>
+    <section className={`rounded-lg border border-gray-200 bg-white p-4 ${className}`}>
       {title && (
         <header className="mb-3">
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
+          <h2 className="text-sm font-medium text-gray-900">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
         </header>
       )}
       {children}
@@ -180,11 +180,11 @@ export function Widget({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-gray-200 bg-white p-4">
       <header className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p>}
+          <h2 className="text-sm font-medium text-gray-900">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
         </div>
         <SqlLink file={sql} />
       </header>

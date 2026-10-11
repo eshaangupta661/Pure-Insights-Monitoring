@@ -1,8 +1,7 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   /* The one accent. Everything else is neutral gray; red/amber appear only for severity. */
   --color-accent: #2a78d6;
   --color-accent-strong: #1f63b5;
@@ -17,16 +16,7 @@ body,
   height: 100%;
 }
 
-h1,
-h2,
-h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.015em;
-}
-
 body {
-  font-feature-settings: 'cv11', 'ss01';
-  -webkit-font-smoothing: antialiased;
   background: var(--color-gray-50);
   color: var(--color-gray-900);
 }

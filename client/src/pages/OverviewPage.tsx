@@ -1,15 +1,3 @@
-import {
-  Bell,
-  CircleCheck,
-  Clock,
-  DollarSign,
-  FileBarChart,
-  Gauge,
-  Timer,
-  UserX,
-  XCircle,
-  type LucideIcon,
-} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   Bar,
@@ -47,41 +35,12 @@ const REFRESH_SERIES: readonly { key: RefreshStatus; label: string; color: strin
 const TOP_PROBLEMS = 5;
 const AXIS = { fontSize: 11, fill: '#6b7280' } as const;
 
-const TILE_TONES = {
-  blue: { bar: 'bg-blue-500', icon: 'bg-blue-50 text-blue-600' },
-  green: { bar: 'bg-emerald-500', icon: 'bg-emerald-50 text-emerald-600' },
-  amber: { bar: 'bg-amber-500', icon: 'bg-amber-50 text-amber-600' },
-  red: { bar: 'bg-red-500', icon: 'bg-red-50 text-red-600' },
-  violet: { bar: 'bg-violet-500', icon: 'bg-violet-50 text-violet-600' },
-} as const;
-
-function Tile({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  tone = 'blue',
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: LucideIcon;
-  tone?: keyof typeof TILE_TONES;
-}) {
-  const t = TILE_TONES[tone];
+function Tile({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-5 pt-6 shadow-sm transition-shadow hover:shadow-md">
-      <span className={`absolute inset-x-0 top-0 h-1 ${t.bar}`} aria-hidden />
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-gray-600">{label}</p>
-        <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${t.icon}`}>
-          <Icon className="size-5" aria-hidden />
-        </span>
-      </div>
-      <p className="font-display mt-2 text-4xl font-extrabold tracking-tight text-gray-900 tabular-nums">
-        {value}
-      </p>
-      <p className="mt-2 text-sm leading-snug text-gray-500">{detail}</p>
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <p className="text-xs font-medium text-gray-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-gray-900 tabular-nums">{value}</p>
+      <p className="mt-1 text-xs text-gray-500">{detail}</p>
     </div>
   );
 }
@@ -94,36 +53,26 @@ function KpiTiles({ kpis, warningSec }: { kpis: OverviewKpis; warningSec: number
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <Tile
         label="Reports"
-        icon={FileBarChart}
-        tone="blue"
         value={formatInt(kpis.reportCount)}
         detail={`${formatInt(kpis.orphanedCount)} without an owner`}
       />
       <Tile
         label="Refresh success"
-        icon={CircleCheck}
-        tone="green"
         value={refreshed ? formatPercent(kpis.refresh.SUCCESS / refreshed) : '—'}
         detail={`${formatInt(failing)} failed or timed out · ${formatInt(kpis.refresh.UNKNOWN)} unknown`}
       />
       <Tile
         label={warningSec ? `Slow reports (> ${warningSec} s)` : 'Slow reports'}
-        icon={Clock}
-        tone="amber"
         value={formatInt(kpis.slowCount)}
         detail={`${formatInt(kpis.criticalSlowCount)} critical · avg ${formatSeconds(kpis.avgLoadTimeSec)}`}
       />
       <Tile
         label="Active alerts"
-        icon={Bell}
-        tone="red"
         value={formatInt(kpis.alerts.total)}
         detail={`${formatInt(kpis.alerts.CRITICAL)} critical · ${formatInt(kpis.alerts.open)} open, ${formatInt(kpis.alerts.acknowledged)} acknowledged`}
       />
       <Tile
         label="Cost this snapshot"
-        icon={DollarSign}
-        tone="violet"
         value={formatUsd(cost)}
         detail={`Snowflake ${formatUsd(kpis.totals.snapshotSnowflakeCostUsd)} · AWS ${formatUsd(kpis.totals.snapshotAwsCostUsd)}`}
       />
@@ -138,29 +87,21 @@ function PeriodTiles({ p, warningSec }: { p: PeriodOverview; warningSec: number 
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <Tile
         label="Refresh success"
-        icon={CircleCheck}
-        tone="green"
         value={p.refreshSuccessRate === null ? '—' : formatPercent(p.refreshSuccessRate)}
         detail={`${formatInt(p.refresh.SUCCESS)} of ${formatInt(p.refreshCount)} refreshes, ${span}`}
       />
       <Tile
         label="Failed + timed out"
-        icon={XCircle}
-        tone="red"
         value={formatInt(p.refresh.FAILED + p.refresh.TIMED_OUT)}
         detail={`${formatInt(p.refresh.FAILED)} failed · ${formatInt(p.refresh.TIMED_OUT)} timed out`}
       />
       <Tile
         label="Reports ever orphaned"
-        icon={UserX}
-        tone="amber"
         value={formatInt(p.everOrphanedCount)}
         detail={`of ${formatInt(p.reportCount)} had no owner in at least one snapshot`}
       />
       <Tile
         label="Snowflake cost to date"
-        icon={DollarSign}
-        tone="violet"
         value={formatUsd(p.totals.snowflakeCostToDateUsd)}
         detail={`${p.snapshotCount} days${
           p.quarantinedSnapshotCount
@@ -170,15 +111,11 @@ function PeriodTiles({ p, warningSec }: { p: PeriodOverview; warningSec: number 
       />
       <Tile
         label="Average load time"
-        icon={Timer}
-        tone="blue"
         value={formatSeconds(p.avgLoadTimeSec)}
         detail={`Over all ${formatInt(p.refreshCount)} report snapshots`}
       />
       <Tile
         label="p95 load time"
-        icon={Gauge}
-        tone="amber"
         value={formatSeconds(p.p95LoadTimeSec)}
         detail={
           warningSec
@@ -423,16 +360,16 @@ export default function OverviewPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Overview</h1>
+        <h1 className="text-lg font-semibold text-gray-900">Overview</h1>
         {isPeriod
           ? period.data && (
-              <p className="text-sm text-gray-500">
+              <p className="text-xs text-gray-500">
                 Period to date: snapshots 1–{period.data.snapshotCount} ({period.data.fromDate} to{' '}
                 {period.data.toDate})
               </p>
             )
           : overview.data && (
-              <p className="mt-1 text-sm text-gray-500">Snapshot dated {overview.data.snapshotDate}</p>
+              <p className="text-xs text-gray-500">Snapshot dated {overview.data.snapshotDate}</p>
             )}
       </div>
 
