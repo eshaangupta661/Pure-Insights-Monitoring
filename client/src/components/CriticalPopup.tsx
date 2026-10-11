@@ -1,4 +1,4 @@
-import { OctagonAlert, X } from 'lucide-react';
+import { BellOff, OctagonAlert, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Alert } from '@pic/shared';
@@ -8,8 +8,9 @@ import { useAlerts } from '../realtime/AlertsProvider';
 
 /**
  * One CRITICAL alert card at a time, bottom right, with "+N more" for the queue. Closes itself
- * after POPUP_MS; hovering (or focusing) the card pauses the countdown. Muting in the bell
- * stops new cards; criticals still reach the bell.
+ * after POPUP_MS; hovering (or focusing) the card pauses the countdown. "Mute" on the card (or
+ * the bell's toggle) closes the queue and stops new cards; criticals still reach the bell,
+ * where pop-ups can be turned back on.
  */
 export default function CriticalPopup() {
   const { popups, dismissPopup } = useAlerts();
@@ -29,7 +30,7 @@ function PopupCard({
   dismiss: (alertId: string) => void;
 }) {
   const { user } = useAuth();
-  const { ack } = useAlerts();
+  const { ack, setMutePopups } = useAlerts();
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ function PopupCard({
         </dd>
       </dl>
       {error && <p className="mt-2 text-critical">{error}</p>}
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
           to={`/reports/${a.reportId}`}
           onClick={onDismiss}
@@ -112,6 +113,15 @@ function PopupCard({
             {busy ? 'Acknowledging…' : 'Acknowledge'}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setMutePopups(true)}
+          title="Stop critical pop-ups (turn them back on from the bell)"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+        >
+          <BellOff className="size-3.5" aria-hidden />
+          Mute
+        </button>
         {more > 0 && <span className="ml-auto text-gray-500 tabular-nums">+{more} more</span>}
       </div>
     </div>

@@ -416,6 +416,20 @@ export default function AlertsPage() {
 
       <Card>
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <label className="relative">
+            <span className="sr-only">Search alerts by report</span>
+            <Search
+              className="pointer-events-none absolute top-2 left-2.5 size-4 text-gray-400"
+              aria-hidden
+            />
+            <input
+              type="search"
+              placeholder="Report id or name"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`${controlClass} w-48 pl-8`}
+            />
+          </label>
           <label className="flex items-center gap-2 text-sm text-gray-700">
             Status
             <select
@@ -471,20 +485,6 @@ export default function AlertsPage() {
               <option value="report">Report number</option>
               <option value="snapshot">Snapshot (newest first)</option>
             </select>
-          </label>
-          <label className="relative">
-            <span className="sr-only">Search alerts by report</span>
-            <Search
-              className="pointer-events-none absolute top-2 left-2.5 size-4 text-gray-400"
-              aria-hidden
-            />
-            <input
-              type="search"
-              placeholder="Report id or name"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={`${controlClass} w-48 pl-8`}
-            />
           </label>
           <label className="flex items-center gap-1.5 text-sm text-gray-700">
             <input
