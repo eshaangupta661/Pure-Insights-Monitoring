@@ -234,6 +234,7 @@ export class RealtimeHub {
       const before = this.clock.state();
       if (command.action === 'pause') this.clock.pause();
       else if (command.action === 'resume') this.clock.resume();
+      else if (command.action === 'jump_to_end') this.clock.jumpToEnd();
       else this.clock.setSpeed(command.value);
       const after = this.clock.state();
       try {

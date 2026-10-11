@@ -477,5 +477,14 @@ describe('alerts API', () => {
         { action: 'speed', value: 1 },
       ]);
     });
+
+    it('jump_to_end skips to the last snapshot of the pass and pauses there', async () => {
+      const res = await command({ action: 'jump_to_end' });
+      expect(res.body).toMatchObject({ tick: config.SNAPSHOT_COUNT - 1, paused: true });
+      const cycle = res.body.cycle;
+      t.clock.advance(config.TICK_MS * 3);
+      expect(await state()).toMatchObject({ tick: config.SNAPSHOT_COUNT - 1, cycle });
+      await command({ action: 'resume' });
+    });
   });
 });

@@ -293,9 +293,11 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
   acknowledged or skipped) no audit row is written. Each changed alert is then broadcast as
   `alert:updated`, exactly as for single acks.
 - `GET /admin/replay` returns `{ tick, cycle, snapshotDate, paused, speed, tickMs }`.
-- `POST /admin/replay` takes `{ "action": "pause" | "resume" }` or
-  `{ "action": "speed", "value": 1 | 2 | 5 | 10 }`. Only the clock's time anchor moves, so the
-  tick never jumps.
+- `POST /admin/replay` takes `{ "action": "pause" | "resume" | "jump_to_end" }` or
+  `{ "action": "speed", "value": 1 | 2 | 5 | 10 }`. Pause, resume and speed only move the clock's
+  time anchor, so the tick never jumps. `jump_to_end` skips forward to the last snapshot of the
+  current pass (alerts for the skipped snapshots are replayed on the way) and pauses there; it
+  never starts a new cycle.
 - `POST /admin/incidents` takes
   `{ "reportId": "RPT_203", "kind": "LATENCY_SPIKE" | "REFRESH_FAILED" }` and returns 201 with
   the resulting alert. It adds a synthetic reading at the current tick (load time 55 s, the

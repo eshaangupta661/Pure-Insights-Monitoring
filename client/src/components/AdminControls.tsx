@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, Siren } from 'lucide-react';
+import { Pause, Play, SkipForward, Siren } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import type {
   Alert,
@@ -62,6 +62,17 @@ export function ReplayControls() {
           ))}
         </select>
       </label>
+      <button
+        type="button"
+        className={`${secondaryButtonClass} flex items-center gap-1.5 whitespace-nowrap`}
+        disabled={!state || send.isPending}
+        onClick={() => send.mutate({ action: 'jump_to_end' })}
+        title="Skip to the last snapshot and pause there"
+        aria-label="Skip to the last snapshot and pause"
+      >
+        <SkipForward className="size-3.5" aria-hidden />
+        <span className="hidden lg:inline">Skip to last</span>
+      </button>
       {state && (
         <span className="hidden text-xs whitespace-nowrap text-gray-500 2xl:inline">
           {state.paused ? 'Paused' : 'Running'} · one snapshot per{' '}

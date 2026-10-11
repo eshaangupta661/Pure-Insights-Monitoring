@@ -87,6 +87,18 @@ export class ReplayClock {
     this.paused = false;
   }
 
+  /**
+   * Skips forward to the last snapshot of the current pass and pauses there. Only moves virtual
+   * time forward (a no-op move when already on the last snapshot), so the cycle never changes.
+   */
+  jumpToEnd(): void {
+    const { cycle } = this.position();
+    const absolute = cycle * config.SNAPSHOT_COUNT + (config.SNAPSHOT_COUNT - 1);
+    this.anchorVirtual = Math.max(this.virtualNow(), absolute * config.TICK_MS);
+    this.anchorReal = this.now();
+    this.paused = true;
+  }
+
   setSpeed(speed: number): void {
     if (!(speed > 0)) throw new RangeError(`speed must be > 0, got ${speed}`);
     this.reanchor();

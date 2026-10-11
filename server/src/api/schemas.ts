@@ -261,6 +261,7 @@ export const replayCommandSchema = z
   .discriminatedUnion('action', [
     z.object({ action: z.literal('pause') }),
     z.object({ action: z.literal('resume') }),
+    z.object({ action: z.literal('jump_to_end') }),
     z.object({
       action: z.literal('speed'),
       value: z

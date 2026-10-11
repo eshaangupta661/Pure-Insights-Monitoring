@@ -56,7 +56,11 @@ export interface ReplayState {
 }
 
 export type ReplayCommand =
-  { action: 'pause' } | { action: 'resume' } | { action: 'speed'; value: number };
+  | { action: 'pause' }
+  | { action: 'resume' }
+  | { action: 'speed'; value: number }
+  /** Skip to the last snapshot of this pass and pause there. */
+  | { action: 'jump_to_end' };
 
 /* ---- WebSocket (Socket.IO namespace ALERTS_NAMESPACE; see docs/WEBSOCKET.md) ------------- */
 

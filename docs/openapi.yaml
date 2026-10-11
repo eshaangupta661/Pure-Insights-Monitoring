@@ -1746,6 +1746,14 @@ components:
             action:
               type: string
               enum:
+                - jump_to_end
+          required:
+            - action
+        - type: object
+          properties:
+            action:
+              type: string
+              enum:
                 - speed
             value:
               type: number
