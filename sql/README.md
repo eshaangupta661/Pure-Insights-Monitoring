@@ -24,14 +24,14 @@ and locally against DuckDB through four small, documented translations.
 Every file starts with a header covering purpose, inputs, output columns and assumptions.
 
 `npm run ingest` runs 00 and 01, loads the CSV, generates the ACCOUNT_USAGE data, and then runs
-02–10. Every statement in 02–10 is `CREATE OR REPLACE`, so re-running is idempotent, and later
+02–11. Every statement in 02–11 is `CREATE OR REPLACE`, so re-running is idempotent, and later
 files build on earlier ones. 02 and 04–09 create views. 09 has its own check view,
 `PERIOD_TO_DATE_CHECKS` (P1–P5, same columns as `RECONCILIATION`), which ingest and startup
 verify like 08's: any FAIL stops both. 10 does the same with `COST_PROJECTION_CHECKS` (F1–F4); 11 does the same with `SYSTEM_HEALTH_CHECKS` (H1–H4).
 03 materializes query-level cost as two
 **tables**. Every downstream file reads that layer, and as a view its range join (83k queries
 against hourly metering) would be re-derived inside each of them. Inlined like that, 08 alone
-exceeded the 256 MB DuckDB memory limit. Materialized, the whole suite runs in about 1.2 s. On
+exceeded the 256 MB DuckDB memory limit. Materialized, the whole suite runs in roughly 1.2 to 1.5 s locally. On
 Snowflake this layer would be a scheduled task or dynamic table over ACCOUNT_USAGE.
 `QUERY_HOUR_COST` and `QUERY_ATTRIBUTED_COST` are **rebuilt from scratch on every ingest**,
 because the runner re-runs 03 before 04–08. They therefore never lag the ACCOUNT_USAGE tables
@@ -134,7 +134,7 @@ workloads. There, concurrency, queueing, warehouse resizes and idle gaps make ti
 true resource share diverge, and only the CONSERVATION checks still apply.
 
 Tolerance is `PARAMS.recon_tolerance` = 1e-6 credits. Observed gaps are around 6e-9 on
-1.39M credits for totals and around 1e-12 per report.
+1.39M credits for totals and under 1e-11 per report.
 
 ## Snowflake → DuckDB translations
 
