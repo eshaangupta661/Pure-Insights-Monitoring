@@ -271,8 +271,9 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
 - **Live updates:** every change (opened, escalated, acknowledged, resolved) is pushed over
   Socket.IO, scoped like the REST responses. See [WEBSOCKET.md](WEBSOCKET.md).
 
-- `GET /alerts?status=&severity=&resolved=&q=&page=&pageSize=` lists the current cycle's alerts:
-  active first, then most severe, then most recently seen. `severity` takes one value or a comma
+- `GET /alerts?status=&severity=&resolved=&q=&sort=&page=&pageSize=` lists the current cycle's
+  alerts, resolved last and the rest most severe first (OPEN before ACKNOWLEDGED, then most
+  recently seen). `sort=snapshot` orders by the snapshot an alert opened at, newest first. `severity` takes one value or a comma
   separated list (`severity=CRITICAL,WARNING`); the UI's default filter is Critical + Warning.
   `resolved=false` leaves out RESOLVED alerts (the default includes them; the UI sends it unless
   "Show resolved" is on). `q` is a case-insensitive substring of the report id or name.

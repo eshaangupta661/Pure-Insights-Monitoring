@@ -2736,7 +2736,7 @@ paths:
       description: |-
         Roles: admin, owner, viewer.
 
-        Active first (OPEN, ACKNOWLEDGED, RESOLVED), then most severe, then most recently seen. Owners see alerts for reports they currently own; admins and viewers see all. Alerts are kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to snapshot 0.
+        Resolved last; the rest most severe first (OPEN before ACKNOWLEDGED, then most recently seen), or with sort=snapshot by the snapshot they opened at, newest first. Owners see alerts for reports they currently own; admins and viewers see all. Alerts are kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to snapshot 0.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2787,6 +2787,16 @@ paths:
             description: Case-insensitive substring of the report id or name
           required: false
           name: q
+          in: query
+        - schema:
+            type: string
+            enum:
+              - severity
+              - snapshot
+            default: severity
+            description: "severity (default): most severe first. snapshot: most recently opened snapshot first. Resolved alerts come last either way."
+          required: false
+          name: sort
           in: query
       responses:
         "200":

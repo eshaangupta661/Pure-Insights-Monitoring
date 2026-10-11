@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { Alert, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
+import type { Alert, AlertSort, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
 import { api } from '../api/http';
 import { ALERTS_KEY, OVERVIEW_KEY } from '../api/queries';
 import {
@@ -250,6 +250,7 @@ export default function AlertsPage() {
   const severityParam = params.get('severity') ?? '';
   const showResolved = params.get('resolved') === 'true';
   const grouped = params.get('group') === 'report';
+  const sort: AlertSort = params.get('sort') === 'snapshot' ? 'snapshot' : 'severity';
   const parsedStatus = isOneOf(STATUSES, statusParam) ? statusParam : undefined;
   // RESOLVED is only selectable while resolved alerts are shown.
   const status = parsedStatus === 'RESOLVED' && !showResolved ? undefined : parsedStatus;
@@ -299,6 +300,7 @@ export default function AlertsPage() {
   if (severityOption.api) query.set('severity', severityOption.api);
   if (!showResolved) query.set('resolved', 'false');
   if (q) query.set('q', q);
+  if (sort !== 'severity') query.set('sort', sort);
   const alerts = useQuery({
     queryKey: [...ALERTS_KEY, query.toString()],
     queryFn: () => api<Page<Alert>>(`/alerts?${query.toString()}`),
@@ -430,6 +432,17 @@ export default function AlertsPage() {
                   {o.label}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            Sort by
+            <select
+              className={controlClass}
+              value={sort}
+              onChange={(e) => setFilter('sort', e.target.value === 'snapshot' ? 'snapshot' : '')}
+            >
+              <option value="severity">Severity</option>
+              <option value="snapshot">Snapshot (newest first)</option>
             </select>
           </label>
           <label className="relative">

@@ -55,6 +55,9 @@ export interface ReplayState {
   tickMs: number;
 }
 
+/** GET /alerts ordering: most severe first (default), or most recently opened snapshot first. */
+export type AlertSort = 'severity' | 'snapshot';
+
 export type ReplayCommand =
   | { action: 'pause' }
   | { action: 'resume' }

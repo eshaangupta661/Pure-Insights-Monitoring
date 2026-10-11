@@ -17,7 +17,8 @@ export const alertRoutes = [
     tag: 'alerts',
     summary: 'Alerts of the current replay cycle',
     description:
-      'Active first (OPEN, ACKNOWLEDGED, RESOLVED), then most severe, then most recently seen. ' +
+      'Resolved last; the rest most severe first (OPEN before ACKNOWLEDGED, then most recently seen), ' +
+      'or with sort=snapshot by the snapshot they opened at, newest first. ' +
       'Owners see alerts for reports they currently own; admins and viewers see all. Alerts are ' +
       'kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to ' +
       'snapshot 0.',
@@ -32,6 +33,7 @@ export const alertRoutes = [
           severity: query.severity,
           resolved: query.resolved,
           q: query.q,
+          sort: query.sort,
         }),
         query,
       ),

@@ -18,6 +18,7 @@
 import type {
   Alert,
   ActiveAlertCounts,
+  AlertSort,
   AlertStatus,
   AuthUser,
   IncidentKind,
@@ -184,7 +185,7 @@ export class AlertEngine {
     return this.withOwners(events);
   }
 
-  /** Alerts of the current cycle visible to `scope`: active first, then most severe, newest. */
+  /** Alerts of the current cycle visible to `scope`: active first, then ranked by `filter.sort`. */
   list(
     scope: Scope,
     filter: {
@@ -193,6 +194,8 @@ export class AlertEngine {
       severity?: readonly Severity[];
       /** false = leave out RESOLVED alerts. */
       resolved?: boolean;
+      /** severity (default): most severe first; snapshot: opened most recently first. */
+      sort?: AlertSort;
       /** Case-insensitive substring of the report id or name. */
       q?: string;
     } = {},
@@ -211,13 +214,27 @@ export class AlertEngine {
             a.reportId.toLowerCase().includes(needle) ||
             a.reportName.toLowerCase().includes(needle)),
       )
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        // Resolved alerts always come last; within that, the chosen ranking.
+        const resolved = Number(a.status === 'RESOLVED') - Number(b.status === 'RESOLVED');
+        const bySeverity = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+        if (filter.sort === 'snapshot') {
+          return (
+            resolved ||
+            b.openedTick - a.openedTick ||
+            bySeverity ||
+            STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+            a.id.localeCompare(b.id)
+          );
+        }
+        return (
+          resolved ||
+          bySeverity ||
           STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-          SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
           b.lastSeenTick - a.lastSeenTick ||
-          a.id.localeCompare(b.id),
-      );
+          a.id.localeCompare(b.id)
+        );
+      });
   }
 
   counts(scope: Scope): ActiveAlertCounts {

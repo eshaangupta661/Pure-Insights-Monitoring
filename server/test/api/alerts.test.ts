@@ -57,6 +57,24 @@ describe('alerts API', () => {
       );
     });
 
+    it('sorts by severity by default and by opened snapshot with sort=snapshot; resolved last', async () => {
+      const rank = { INFO: 0, WARNING: 1, CRITICAL: 2 };
+      const active = (await alertsAs(admin)).filter((a) => a.status !== 'RESOLVED');
+      expect(active.map((a) => rank[a.severity])).toEqual(
+        active.map((a) => rank[a.severity]).sort((x, y) => y - x),
+      );
+      const byTick = await alertsAs(admin, '&sort=snapshot');
+      const live = byTick.filter((a) => a.status !== 'RESOLVED');
+      expect(live.map((a) => a.openedTick)).toEqual(
+        live.map((a) => a.openedTick).sort((x, y) => y - x),
+      );
+      const firstResolved = byTick.findIndex((a) => a.status === 'RESOLVED');
+      if (firstResolved >= 0) {
+        expect(byTick.slice(firstResolved).every((a) => a.status === 'RESOLVED')).toBe(true);
+      }
+      expect((await admin.get('/api/v1/alerts?sort=bogus')).status).toBe(400);
+    });
+
     it('filters by status and severity; overview counts match the active list', async () => {
       const open = await alertsAs(admin, '&status=OPEN');
       expect(open.every((a) => a.status === 'OPEN')).toBe(true);

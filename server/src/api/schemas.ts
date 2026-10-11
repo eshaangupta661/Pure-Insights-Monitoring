@@ -211,6 +211,14 @@ export const alertsQuerySchema = pageQuerySchema.extend({
     .max(100)
     .optional()
     .openapi({ description: 'Case-insensitive substring of the report id or name' }),
+  sort: z
+    .enum(['severity', 'snapshot'])
+    .default('severity')
+    .openapi({
+      description:
+        'severity (default): most severe first. snapshot: most recently opened snapshot first. ' +
+        'Resolved alerts come last either way.',
+    }),
 });
 
 export const BULK_ACK_MAX = 200;
