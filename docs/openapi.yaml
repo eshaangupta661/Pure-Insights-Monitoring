@@ -1251,6 +1251,54 @@ components:
         - openedAt
         - lastSeenTick
         - synthetic
+    BulkAckResult:
+      type: object
+      properties:
+        acknowledged:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alert"
+        newlyAcknowledged:
+          type: integer
+        skipped:
+          type: array
+          items:
+            type: object
+            properties:
+              alertId:
+                type: string
+              code:
+                type: string
+                enum:
+                  - NOT_FOUND
+                  - CONFLICT
+              message:
+                type: string
+            required:
+              - alertId
+              - code
+              - message
+      required:
+        - acknowledged
+        - newlyAcknowledged
+        - skipped
+    BulkAckRequest:
+      type: object
+      properties:
+        alertIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+          minItems: 1
+          maxItems: 200
+      required:
+        - alertIds
+      example:
+        alertIds:
+          - 88990-RPT_203-LATENCY-7
+          - 88990-RPT_211-REFRESH_FAILED-4
     ReplayState:
       type: object
       properties:
@@ -1339,6 +1387,7 @@ components:
       enum:
         - OWNER_OVERRIDE
         - ALERT_ACK
+        - ALERT_ACK_BULK
         - REPLAY_CONTROL
         - INCIDENT_INJECT
     AuditLogEntry:
@@ -2224,7 +2273,9 @@ paths:
           name: status
           in: query
         - schema:
-            $ref: "#/components/schemas/Severity"
+            type: string
+            description: One or more severities, comma separated (INFO, WARNING, CRITICAL)
+            example: CRITICAL,WARNING
           required: false
           name: severity
           in: query
@@ -2291,6 +2342,51 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           description: "UNAUTHENTICATED: no valid session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/alerts/ack:
+    post:
+      tags:
+        - alerts
+      summary: Acknowledge several alerts
+      description: |-
+        Roles: admin, owner.
+
+        Acknowledges up to 200 alerts in one audited step. Each id is handled like `POST /alerts/:id/ack`: OPEN → ACKNOWLEDGED (already acknowledged is a no-op), and an unknown id or one outside your scope is skipped as NOT_FOUND (owners cannot tell the two apart), a RESOLVED one as CONFLICT. Skipped ids never fail the request. One `ALERT_ACK_BULK` audit row covers all changes; if it cannot be written, every ack is withdrawn and the request fails with 500. Each changed alert is broadcast as `alert:updated`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      x-roles:
+        - admin
+        - owner
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkAckRequest"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkAckResult"
+        "400":
+          description: "VALIDATION_ERROR: invalid query, path or body"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: "UNAUTHENTICATED: no valid session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: "FORBIDDEN: role not allowed; BAD_ORIGIN: cross-origin mutation (production)"
           content:
             application/json:
               schema:

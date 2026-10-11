@@ -2,13 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from 'recharts';
-import type {
-  DqFlag,
-  OwnerOverrideRequest,
-  RefreshStatus,
-  ReportDetail,
-  ViewerReportDetail,
-} from '@pic/shared';
+import type { DqFlag, OwnerOverrideRequest, ReportDetail, ViewerReportDetail } from '@pic/shared';
 import { api } from '../api/http';
 import { ANOMALIES_KEY, OVERVIEW_KEY, REPORTS_KEY, useTrend } from '../api/queries';
 import { useAuth } from '../auth/AuthProvider';
@@ -23,6 +17,7 @@ import {
   secondaryButtonClass,
 } from '../components/ui';
 import { formatInt, formatSeconds, formatUsd } from '../lib/format';
+import { STATUS_ORDER, STATUS_STYLE } from '../lib/status';
 
 type Detail = ReportDetail | ViewerReportDetail;
 const hasCost = (d: Detail): d is ReportDetail => 'cost' in d;
@@ -37,13 +32,6 @@ const FLAG_LABEL: Record<DqFlag, string> = {
   UNKNOWN_REFRESH: 'Unknown refresh',
   SLOW_BUT_HEALTHY: 'Slow but healthy',
   OWNER_CHANGED: 'Owner changed',
-};
-
-const STATUS_FILL: Record<RefreshStatus, string> = {
-  SUCCESS: 'bg-gray-300',
-  UNKNOWN: 'bg-gray-100 border border-gray-300',
-  FAILED: 'bg-critical',
-  TIMED_OUT: 'bg-red-300',
 };
 
 /**
@@ -246,7 +234,8 @@ function DrawerBody({ report }: { report: Detail }) {
             <span
               key={h.snapshotIdx}
               title={`Snapshot ${h.snapshotIdx + 1}: ${refreshLabel(h.refreshStatus)}`}
-              className={`h-2 flex-1 rounded-sm ${STATUS_FILL[h.refreshStatus]} ${
+              style={{ background: STATUS_STYLE[h.refreshStatus].fill }}
+              className={`h-2 flex-1 rounded-sm ${
                 h.snapshotIdx > report.snapshotIdx ? 'opacity-30' : ''
               }`}
             />
@@ -256,6 +245,18 @@ function DrawerBody({ report }: { report: Detail }) {
           Dashed line: warning threshold{thresholds ? ` (${thresholds.warningSec} s)` : ''}. Strip:
           refresh status per snapshot; faded snapshots have not been replayed yet.
         </p>
+        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-600">
+          {STATUS_ORDER.map((s) => (
+            <li key={s} className="flex items-center gap-1">
+              <span
+                className="size-2 rounded-sm"
+                style={{ background: STATUS_STYLE[s].fill }}
+                aria-hidden
+              />
+              {STATUS_STYLE[s].label}
+            </li>
+          ))}
+        </ul>
       </Section>
 
       <Section title="Owner history">

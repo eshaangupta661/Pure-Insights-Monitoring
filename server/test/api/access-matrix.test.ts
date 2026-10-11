@@ -84,6 +84,13 @@ const MATRIX: Row[] = [
     success: 200,
     url: (f) => `/alerts/${f.alert}/ack`,
   },
+  {
+    method: 'post',
+    path: '/alerts/ack',
+    allowed: ['admin', 'owner'],
+    success: 200,
+    body: (f) => ({ alertIds: [f.alert] }),
+  },
   { method: 'get', path: '/admin/replay', allowed: ['admin'], success: 200 },
   {
     method: 'post',

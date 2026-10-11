@@ -19,6 +19,8 @@ import type {
   ViewerAnomalyTotals,
   ViewerOrphanedReport,
   AuditAction,
+  BulkAckRequest,
+  BulkAckResult,
   AuditLogEntry,
   AuthUser,
   AwsViewsMismatch,
@@ -177,9 +179,20 @@ export const activeAlertCountsSchema = z
   .openapi('ActiveAlertCounts');
 assertTrue<AssertEqual<z.infer<typeof activeAlertCountsSchema>, ActiveAlertCounts>>();
 
+/** `?severity=CRITICAL,WARNING`: one or more severities, comma separated. */
+const severityListQuery = z
+  .string()
+  .transform((v) => v.split(',').map((s) => s.trim()))
+  .pipe(z.array(severitySchema).min(1).max(3))
+  .openapi({
+    type: 'string',
+    description: 'One or more severities, comma separated (INFO, WARNING, CRITICAL)',
+    example: 'CRITICAL,WARNING',
+  });
+
 export const alertsQuerySchema = pageQuerySchema.extend({
   status: alertStatusSchema.optional(),
-  severity: severitySchema.optional(),
+  severity: severityListQuery.optional(),
   resolved: booleanQuery
     .optional()
     .openapi({ description: 'false = leave out RESOLVED alerts (the default is to include them)' }),
@@ -190,6 +203,29 @@ export const alertsQuerySchema = pageQuerySchema.extend({
     .optional()
     .openapi({ description: 'Case-insensitive substring of the report id or name' }),
 });
+
+export const BULK_ACK_MAX = 200;
+export const bulkAckBodySchema = z
+  .object({ alertIds: z.array(z.string().min(1).max(120)).min(1).max(BULK_ACK_MAX) })
+  .openapi('BulkAckRequest', {
+    example: { alertIds: ['88990-RPT_203-LATENCY-7', '88990-RPT_211-REFRESH_FAILED-4'] },
+  });
+assertTrue<AssertEqual<z.infer<typeof bulkAckBodySchema>, BulkAckRequest>>();
+
+export const bulkAckResultSchema = z
+  .object({
+    acknowledged: z.array(alertSchema),
+    newlyAcknowledged: z.number().int(),
+    skipped: z.array(
+      z.object({
+        alertId: z.string(),
+        code: z.enum(['NOT_FOUND', 'CONFLICT']),
+        message: z.string(),
+      }),
+    ),
+  })
+  .openapi('BulkAckResult');
+assertTrue<AssertEqual<z.infer<typeof bulkAckResultSchema>, BulkAckResult>>();
 
 export const alertIdParamsSchema = z.object({
   id: z
@@ -770,7 +806,7 @@ export const ownerOverrideBodySchema = z
 assertTrue<AssertEqual<z.infer<typeof ownerOverrideBodySchema>, OwnerOverrideRequest>>();
 
 export const auditActionSchema = z
-  .enum(['OWNER_OVERRIDE', 'ALERT_ACK', 'REPLAY_CONTROL', 'INCIDENT_INJECT'])
+  .enum(['OWNER_OVERRIDE', 'ALERT_ACK', 'ALERT_ACK_BULK', 'REPLAY_CONTROL', 'INCIDENT_INJECT'])
   .openapi('AuditAction');
 assertTrue<AssertEqual<z.infer<typeof auditActionSchema>, AuditAction>>();
 

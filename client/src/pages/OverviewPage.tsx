@@ -14,15 +14,16 @@ import type { LatencyBucket, OverviewKpis, OverviewTrend, RefreshStatus } from '
 import { useOverview, useTrend } from '../api/queries';
 import { Card, EmptyState, ErrorState, SeverityBadge, Skeleton } from '../components/ui';
 import { formatInt, formatPercent, formatSeconds, formatUsd } from '../lib/format';
+import { STATUS_ORDER, STATUS_STYLE } from '../lib/status';
 import { useAlerts } from '../realtime/AlertsProvider';
 
 /** Chart colors by refresh status (categorical order); each also appears in the legend. */
-const REFRESH_SERIES: readonly { key: RefreshStatus; label: string; color: string }[] = [
-  { key: 'SUCCESS', label: 'Success', color: '#2a78d6' },
-  { key: 'FAILED', label: 'Failed', color: '#e34948' },
-  { key: 'TIMED_OUT', label: 'Timed out', color: '#eb6834' },
-  { key: 'UNKNOWN', label: 'Unknown', color: '#9a9a94' },
-];
+const REFRESH_SERIES: readonly { key: RefreshStatus; label: string; color: string }[] =
+  STATUS_ORDER.map((key) => ({
+    key,
+    label: STATUS_STYLE[key].label,
+    color: STATUS_STYLE[key].fill,
+  }));
 const TOP_PROBLEMS = 5;
 const AXIS = { fontSize: 11, fill: '#6b7280' } as const;
 

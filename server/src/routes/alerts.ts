@@ -1,4 +1,10 @@
-import { alertIdParamsSchema, alertSchema, alertsQuerySchema } from '../api/schemas.js';
+import {
+  alertIdParamsSchema,
+  alertSchema,
+  alertsQuerySchema,
+  bulkAckBodySchema,
+  bulkAckResultSchema,
+} from '../api/schemas.js';
 import { syncedAlerts } from '../deps.js';
 import { HttpError, notFound } from '../http/errors.js';
 import { pageSchema, paginateArray } from '../http/pagination.js';
@@ -29,6 +35,25 @@ export const alertRoutes = [
         }),
         query,
       ),
+  }),
+
+  defineRoute({
+    method: 'post',
+    path: '/alerts/ack',
+    tag: 'alerts',
+    summary: 'Acknowledge several alerts',
+    description:
+      'Acknowledges up to 200 alerts in one audited step. Each id is handled like ' +
+      '`POST /alerts/:id/ack`: OPEN → ACKNOWLEDGED (already acknowledged is a no-op), and an ' +
+      'unknown id or one outside your scope is skipped as NOT_FOUND (owners cannot tell the ' +
+      'two apart), a RESOLVED one as CONFLICT. Skipped ids never fail the request. One ' +
+      '`ALERT_ACK_BULK` audit row covers all changes; if it cannot be written, every ack is ' +
+      'withdrawn and the request fails with 500. Each changed alert is broadcast as ' +
+      '`alert:updated`.',
+    access: ['admin', 'owner'],
+    body: bulkAckBodySchema,
+    response: bulkAckResultSchema,
+    handler: ({ deps, user, body }) => deps.realtime.ackMany(user, body.alertIds),
   }),
 
   defineRoute({

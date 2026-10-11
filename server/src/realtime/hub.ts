@@ -22,6 +22,8 @@ import type { Namespace, Socket } from 'socket.io';
 import type {
   Alert,
   AuthUser,
+  BulkAckResult,
+  BulkAckSkipped,
   ClientToServerEvents,
   IncidentKind,
   OverviewKpis,
@@ -36,7 +38,13 @@ import type { Queryable } from '../data/warehouse.js';
 import { getOverview } from '../repos/overview.js';
 import { recordAudit } from '../repos/audit.js';
 import type { ReplayClock } from './clock.js';
-import type { AlertEngine, AlertEvents, EngineAckResult, IncidentResult } from './engine.js';
+import type {
+  AckRecord,
+  AlertEngine,
+  AlertEvents,
+  EngineAckResult,
+  IncidentResult,
+} from './engine.js';
 
 export interface SocketData {
   user: AuthUser;
@@ -133,12 +141,60 @@ export class RealtimeHub {
           ...alerts.position(),
         });
       } catch (err) {
-        alerts.withdrawAck(result.record);
+        alerts.withdrawAcks([result.record]);
         throw err;
       }
       this.emitAlert('alert:updated', result.alert);
       this.refreshKpis();
       return result;
+    });
+  }
+
+  /**
+   * Acknowledges several alerts as `user` in one step (POST /alerts/ack). Each id is checked
+   * like a single ack: unknown or out-of-scope ids are NOT_FOUND, resolved ones CONFLICT, and
+   * neither stops the others. All changes share ONE ALERT_ACK_BULK audit row; if it can't be
+   * written every ack is withdrawn before anyone hears of it.
+   */
+  ackMany(user: AuthUser, alertIds: readonly string[]): Promise<BulkAckResult> {
+    return this.exclusive(async () => {
+      const alerts = await this.syncLocked();
+      const scope = scopeFor(user);
+      const acknowledged: Alert[] = [];
+      const skipped: BulkAckSkipped[] = [];
+      const records: AckRecord[] = [];
+      for (const alertId of new Set(alertIds)) {
+        const result = alerts.ack(alertId, user, scope);
+        if (!result.ok) {
+          skipped.push(
+            result.reason === 'RESOLVED'
+              ? { alertId, code: 'CONFLICT', message: 'Alert is already resolved' }
+              : { alertId, code: 'NOT_FOUND', message: 'No such alert' },
+          );
+          continue;
+        }
+        acknowledged.push(result.alert);
+        if (result.record) records.push(result.record);
+      }
+      if (records.length === 0) {
+        return { acknowledged, newlyAcknowledged: 0, skipped };
+      }
+      const changed = new Set(records.map((r) => r.alertId));
+      try {
+        await recordAudit(this.warehouse, user, 'ALERT_ACK_BULK', `${changed.size} alerts`, {
+          alertIds: [...changed],
+          requested: new Set(alertIds).size,
+          skipped: skipped.map((s) => ({ alertId: s.alertId, code: s.code })),
+          ...alerts.position(),
+        });
+      } catch (err) {
+        alerts.withdrawAcks(records);
+        throw err;
+      }
+      for (const alert of acknowledged)
+        if (changed.has(alert.id)) this.emitAlert('alert:updated', alert);
+      this.refreshKpis();
+      return { acknowledged, newlyAcknowledged: changed.size, skipped };
     });
   }
 

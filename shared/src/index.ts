@@ -88,6 +88,26 @@ export interface ClientToServerEvents {
   'alert:ack': (request: AlertAckRequest, callback: (response: AlertAckResponse) => void) => void;
 }
 
+/** POST /alerts/ack: acknowledge several alerts in one audited step. */
+export interface BulkAckRequest {
+  alertIds: string[];
+}
+
+/** Why one alert in a bulk ack was left alone. NOT_FOUND also covers alerts outside your scope. */
+export interface BulkAckSkipped {
+  alertId: string;
+  code: 'NOT_FOUND' | 'CONFLICT';
+  message: string;
+}
+
+export interface BulkAckResult {
+  /** Every requested alert that is now ACKNOWLEDGED, including ones that already were. */
+  acknowledged: Alert[];
+  /** How many of `acknowledged` this request changed (the rest were already acknowledged). */
+  newlyAcknowledged: number;
+  skipped: BulkAckSkipped[];
+}
+
 export type IncidentKind = 'LATENCY_SPIKE' | 'REFRESH_FAILED';
 
 export interface IncidentRequest {
@@ -500,7 +520,8 @@ export interface OwnerOverrideRequest {
   reason?: string;
 }
 
-export type AuditAction = 'OWNER_OVERRIDE' | 'ALERT_ACK' | 'REPLAY_CONTROL' | 'INCIDENT_INJECT';
+export type AuditAction =
+  'OWNER_OVERRIDE' | 'ALERT_ACK' | 'ALERT_ACK_BULK' | 'REPLAY_CONTROL' | 'INCIDENT_INJECT';
 
 export interface AuditLogEntry {
   id: string;

@@ -112,6 +112,11 @@ Socket and REST acks share one code path (`RealtimeHub.ack`). The ack is applied
 room that can see the alert. Acknowledging an already-acknowledged alert is idempotent
 (`ok: true`, no new audit row, no event).
 
+Bulk acks (`POST /alerts/ack`, REST only; see [API.md](API.md)) run on the same lock
+(`RealtimeHub.ackMany`). They write one `ALERT_ACK_BULK` audit row, and only then send one
+`alert:updated` per changed alert, each to the rooms that can see that alert, so an owner hears
+only about their own alerts.
+
 ## Alert lifecycle
 
 ```mermaid

@@ -21,6 +21,11 @@ import { useTrend } from '../api/queries';
 import ReportDrawer from './ReportDrawer';
 
 const PAGE_SIZE = 25;
+/**
+ * The Report column stays put while the rest scrolls sideways on narrow screens. Its cells need
+ * their own opaque background (set where used) so scrolled cells don't show through.
+ */
+const STICKY = 'sticky left-0 z-10 min-w-[10rem] shadow-[1px_0_0_0_var(--color-gray-200)]';
 const STATUSES: RefreshStatus[] = ['SUCCESS', 'FAILED', 'TIMED_OUT', 'UNKNOWN'];
 type SortKey = 'reportId' | 'loadTime' | 'views' | 'status';
 
@@ -36,6 +41,7 @@ function SortHeader({
   order,
   onSort,
   align = 'left',
+  className = '',
 }: {
   label: string;
   k: SortKey;
@@ -43,13 +49,14 @@ function SortHeader({
   order: 'asc' | 'desc';
   onSort: (k: SortKey) => void;
   align?: 'left' | 'right';
+  className?: string;
 }) {
   const active = sort === k;
   return (
     <th
       scope="col"
       aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={`py-2 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}
+      className={`py-2 pr-3 font-medium whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'} ${className}`}
     >
       <button
         type="button"
@@ -229,8 +236,9 @@ export default function ReportsPage() {
                         sort={sort}
                         order={order}
                         onSort={onSort}
+                        className={`${STICKY} bg-white`}
                       />
-                      <th scope="col" className="py-2 text-left font-medium">
+                      <th scope="col" className="py-2 pr-3 text-left font-medium whitespace-nowrap">
                         Owner at snapshot
                       </th>
                       <SortHeader
@@ -256,7 +264,7 @@ export default function ReportsPage() {
                         onSort={onSort}
                         align="right"
                       />
-                      <th scope="col" className="py-2 text-right font-medium">
+                      <th scope="col" className="py-2 text-right font-medium whitespace-nowrap">
                         DQ flags
                       </th>
                     </tr>
@@ -274,15 +282,21 @@ export default function ReportsPage() {
                           e.key === 'Enter' &&
                           navigate({ pathname: `/reports/${r.reportId}`, search: listSearch })
                         }
-                        className={`cursor-pointer hover:bg-gray-50 focus:bg-gray-50 focus:outline-none ${
+                        className={`group cursor-pointer hover:bg-gray-50 focus:bg-gray-50 focus:outline-none ${
                           r.reportId === selectedId ? 'bg-accent-soft' : ''
                         }`}
                       >
-                        <td className="py-2 pr-3">
-                          <span className="font-medium text-gray-900">{r.reportName}</span>{' '}
-                          <span className="text-gray-500">{r.reportId}</span>
+                        <td
+                          className={`${STICKY} py-2 pr-3 ${
+                            r.reportId === selectedId
+                              ? 'bg-accent-soft'
+                              : 'bg-white group-hover:bg-gray-50 group-focus:bg-gray-50'
+                          }`}
+                        >
+                          <span className="block font-medium text-gray-900">{r.reportName}</span>
+                          <span className="block text-xs text-gray-500">{r.reportId}</span>
                         </td>
-                        <td className="py-2 pr-3 text-gray-700">
+                        <td className="py-2 pr-3 whitespace-nowrap text-gray-700">
                           {r.snapshotOwner ?? (
                             <span className="text-gray-500 italic">No owner</span>
                           )}
@@ -292,13 +306,13 @@ export default function ReportsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 whitespace-nowrap">
                           <RefreshBadge status={r.refreshStatus} />
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">
+                        <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">
                           {formatSeconds(r.loadTimeSec)}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums">
+                        <td className="py-2 pr-3 text-right whitespace-nowrap tabular-nums">
                           {r.monthlyActiveViews === 0 ? (
                             <span className="text-gray-500">0</span>
                           ) : (

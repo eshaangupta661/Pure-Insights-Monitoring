@@ -395,6 +395,31 @@ describe('broadcasts are scoped by room', () => {
     expect(payloads<Alert>(owner, 'alert:updated').some((a) => a.id === otherId)).toBe(false);
   });
 
+  it('a bulk ack broadcasts one alert:updated per changed alert, scoped like single acks', async () => {
+    const openNow = lastSnapshot(admin).filter((a) => a.status === 'OPEN');
+    const mine = openNow.find((a) => a.ownerEmail === OWNER && a.id !== mineId);
+    const theirs = openNow.find((a) => a.ownerEmail !== OWNER && a.id !== otherId);
+    if (!mine || !theirs) throw new Error('fixture: need an OPEN alert for the owner and another');
+
+    const res = await api()
+      .post('/api/v1/alerts/ack')
+      .set('Authorization', bearerFor('admin'))
+      .send({ alertIds: [mine.id, theirs.id] })
+      .expect(200);
+    expect(res.body.newlyAcknowledged).toBe(2);
+
+    const acked = (r: Recorded, id: string) =>
+      payloads<Alert>(r, 'alert:updated').filter((a) => a.id === id && a.status === 'ACKNOWLEDGED');
+    await vi.waitFor(() => {
+      for (const id of [mine.id, theirs.id]) {
+        expect(acked(admin, id)).toHaveLength(1);
+        expect(acked(viewer, id)).toHaveLength(1);
+      }
+      expect(acked(owner, mine.id)).toHaveLength(1);
+    });
+    expect(acked(owner, theirs.id)).toHaveLength(0); // not their alert: they never hear of it
+  });
+
   it('reassigning a report re-sends scoped snapshots: its alerts move to the new owner', async () => {
     const before = payloads(owner, 'alert:snapshot').length;
     await api()

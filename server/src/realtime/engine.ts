@@ -55,7 +55,7 @@ export interface AckRecord {
 }
 
 export type EngineAckResult =
-  /** `record` is set when this call acknowledged the alert; pass it to withdrawAck() to undo. */
+  /** `record` is set when this call acknowledged the alert; pass it to withdrawAcks() to undo. */
   | { ok: true; alert: Alert; changed: boolean; record: AckRecord | null }
   | { ok: false; reason: 'NOT_FOUND' | 'RESOLVED' };
 
@@ -189,7 +189,8 @@ export class AlertEngine {
     scope: Scope,
     filter: {
       status?: AlertStatus;
-      severity?: Severity;
+      /** Any of these severities. */
+      severity?: readonly Severity[];
       /** false = leave out RESOLVED alerts. */
       resolved?: boolean;
       /** Case-insensitive substring of the report id or name. */
@@ -204,7 +205,7 @@ export class AlertEngine {
         (a) =>
           scopeMatches(scope, a.ownerEmail) &&
           (filter.status === undefined || a.status === filter.status) &&
-          (filter.severity === undefined || a.severity === filter.severity) &&
+          (filter.severity === undefined || filter.severity.includes(a.severity)) &&
           (filter.resolved !== false || a.status !== 'RESOLVED') &&
           (needle === undefined ||
             a.reportId.toLowerCase().includes(needle) ||
@@ -254,9 +255,9 @@ export class AlertEngine {
     return { ...result, alert: this.view(result.alert), record };
   }
 
-  /** Undoes an ack (e.g. its audit row could not be written): drop it and rebuild. */
-  withdrawAck(record: AckRecord): void {
-    this.acks = this.acks.filter((a) => a !== record);
+  /** Undoes acks (e.g. their audit row could not be written): drop them and rebuild once. */
+  withdrawAcks(records: readonly AckRecord[]): void {
+    this.acks = this.acks.filter((a) => !records.includes(a));
     if (this.at) this.rebuild(this.at);
   }
 

@@ -103,7 +103,7 @@ CREATE OR REPLACE TABLE AUDIT_LOG (
     audit_id    VARCHAR   PRIMARY KEY,  -- UUID
     logged_at   TIMESTAMP NOT NULL,     -- UTC
     actor_email VARCHAR   NOT NULL,
-    action      VARCHAR   NOT NULL,     -- OWNER_OVERRIDE | ALERT_ACK | REPLAY_CONTROL | INCIDENT_INJECT
+    action      VARCHAR   NOT NULL,     -- OWNER_OVERRIDE | ALERT_ACK | ALERT_ACK_BULK | REPLAY_CONTROL | INCIDENT_INJECT
     target      VARCHAR   NOT NULL,     -- e.g. report_id or alert id
     details     VARCHAR   NOT NULL      -- JSON text, e.g. {"before":...,"after":...}
 );

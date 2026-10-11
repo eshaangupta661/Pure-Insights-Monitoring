@@ -2,6 +2,7 @@ import { AlertTriangle, FileCode, Info, OctagonAlert, type LucideIcon } from 'lu
 import type { ReactNode } from 'react';
 import type { RefreshStatus, Role, Severity } from '@pic/shared';
 import { sqlFileUrl } from '../lib/links';
+import { STATUS_STYLE } from '../lib/status';
 
 export function Card({
   title,
@@ -85,22 +86,18 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-gray-100 ${className}`} aria-hidden />;
 }
 
-const REFRESH_LABEL: Record<RefreshStatus, string> = {
-  SUCCESS: 'Success',
-  FAILED: 'Failed',
-  TIMED_OUT: 'Timed out',
-  UNKNOWN: 'Unknown',
-};
-export const refreshLabel = (s: RefreshStatus): string => REFRESH_LABEL[s];
+export const refreshLabel = (s: RefreshStatus): string => STATUS_STYLE[s].label;
 
-/** Refresh status as text with a small dot; failures are red only because they raise CRITICAL alerts. */
+/** Refresh status as a tinted pill: label plus dot (colors in lib/status.ts, contrast-tested). */
 export function RefreshBadge({ status }: { status: RefreshStatus }) {
-  const dot =
-    status === 'SUCCESS' ? 'bg-gray-400' : status === 'UNKNOWN' ? 'bg-gray-300' : 'bg-critical';
+  const { label, text, soft, fill } = STATUS_STYLE[status];
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
-      <span className={`size-2 rounded-full ${dot}`} aria-hidden />
-      {REFRESH_LABEL[status]}
+    <span
+      className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap"
+      style={{ color: text, background: soft }}
+    >
+      <span className="size-1.5 rounded-full" style={{ background: fill }} aria-hidden />
+      {label}
     </span>
   );
 }

@@ -422,7 +422,7 @@ describe('AlertEngine', () => {
     const result = engine.ack('3-RPT_1-LATENCY-2', admin, ALL);
     expect(result).toMatchObject({ ok: true, changed: true });
     if (!result.ok || !result.record) throw new Error('expected a new ack');
-    engine.withdrawAck(result.record);
+    engine.withdrawAcks([result.record]);
     expect(engine.list(ALL).find((a) => a.id === '3-RPT_1-LATENCY-2')).toMatchObject({
       status: 'OPEN',
     });

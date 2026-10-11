@@ -70,6 +70,22 @@ describe('alerts API', () => {
       expect((await admin.get('/api/v1/alerts?status=BAD')).status).toBe(400);
     });
 
+    it('severity takes a comma-separated list (Critical + Warning) and rejects junk', async () => {
+      const all = await alertsAs(admin);
+      const both = await alertsAs(admin, '&severity=CRITICAL,WARNING');
+      expect(both).toEqual(all.filter((a) => a.severity !== 'INFO'));
+      expect(both.some((a) => a.severity === 'CRITICAL')).toBe(true);
+      expect(both.some((a) => a.severity === 'WARNING')).toBe(true);
+      expect(await alertsAs(admin, '&severity=INFO')).toEqual(
+        all.filter((a) => a.severity === 'INFO'),
+      );
+      for (const bad of ['&severity=', '&severity=CRITICAL,NOPE', '&severity=CRITICAL,,WARNING']) {
+        const res = await admin.get(`/api/v1/alerts?${bad}`);
+        expect(res.status, bad).toBe(400);
+        expect(res.body.error.message).toMatch(/^query\.severity/);
+      }
+    });
+
     it('resolved=false leaves out RESOLVED alerts; q matches report id or name', async () => {
       const all = await alertsAs(admin);
       const active = await alertsAs(admin, '&resolved=false');
@@ -134,6 +150,99 @@ describe('alerts API', () => {
       expect((await admin.post('/api/v1/alerts/1000-RPT_999-LATENCY-0/ack')).status).toBe(404);
       expect((await viewer.post(`/api/v1/alerts/${resolved.id}/ack`)).status).toBe(403);
       expect((await request(t.app).post(`/api/v1/alerts/${resolved.id}/ack`)).status).toBe(401);
+    });
+  });
+
+  describe('POST /alerts/ack (bulk)', () => {
+    const bulk = (agent: Agent, alertIds: string[]) =>
+      agent.post('/api/v1/alerts/ack').send({ alertIds });
+    const statusOf = async (id: string) => (await alertsAs(admin)).find((a) => a.id === id)?.status;
+
+    it('owner acks several of their alerts in one audit row; skips foreign and resolved ones', async () => {
+      const mine = (await alertsAs(owner, '&status=OPEN')).slice(0, 3);
+      const foreign = (await alertsAs(admin, '&status=OPEN')).find((a) => a.ownerEmail !== OWNER)!;
+      const resolved = (await alertsAs(owner, '&status=RESOLVED'))[0]!; // theirs: CONFLICT, not 404
+      const unknown = '1000-RPT_999-LATENCY-0';
+      expect(mine.length).toBeGreaterThan(1);
+      const before = (await auditRows('ALERT_ACK_BULK')).length;
+
+      const res = await bulk(owner, [
+        ...mine.map((a) => a.id),
+        mine[0]!.id, // a duplicate id counts once
+        foreign.id,
+        resolved.id,
+        unknown,
+      ]);
+      expect(res.status).toBe(200);
+      expect(res.body.newlyAcknowledged).toBe(mine.length);
+      const done: Alert[] = res.body.acknowledged;
+      expect(done.map((a) => a.id).sort()).toEqual(mine.map((a) => a.id).sort());
+      expect(done.every((a) => a.status === 'ACKNOWLEDGED' && a.ackedBy === OWNER)).toBe(true);
+
+      const skipped: { alertId: string; code: string; message: string }[] = res.body.skipped;
+      const why = (id: string) => {
+        const s = skipped.find((x) => x.alertId === id);
+        return s && { code: s.code, message: s.message };
+      };
+      expect(why(resolved.id)?.code).toBe('CONFLICT');
+      // Someone else's alert looks exactly like one that doesn't exist.
+      expect(why(foreign.id)).toEqual({ code: 'NOT_FOUND', message: 'No such alert' });
+      expect(why(foreign.id)).toEqual(why(unknown));
+
+      for (const a of mine) expect(await statusOf(a.id)).toBe('ACKNOWLEDGED');
+      expect(await statusOf(foreign.id)).toBe('OPEN'); // the owner could not touch it
+
+      const audit = await auditRows('ALERT_ACK_BULK');
+      expect(audit).toHaveLength(before + 1);
+      expect(audit.at(-1)!.target).toBe(`${mine.length} alerts`);
+      expect(JSON.parse(audit.at(-1)!.details)).toMatchObject({
+        alertIds: mine.map((a) => a.id),
+        requested: mine.length + 3,
+        tick: LATEST_TICK,
+      });
+    });
+
+    it('is idempotent: repeating it changes nothing and writes no audit row', async () => {
+      const [target] = await alertsAs(owner, '&status=ACKNOWLEDGED');
+      const before = (await auditRows('ALERT_ACK_BULK')).length;
+      const res = await bulk(owner, [target!.id]);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ newlyAcknowledged: 0, skipped: [] });
+      expect(res.body.acknowledged).toHaveLength(1);
+      expect(await auditRows('ALERT_ACK_BULK')).toHaveLength(before);
+    });
+
+    it('admin acks alerts of any owner', async () => {
+      const open = (await alertsAs(admin, '&status=OPEN')).filter((a) => a.ownerEmail !== OWNER);
+      const targets = open.slice(0, 2);
+      expect(targets).toHaveLength(2);
+      const res = await bulk(
+        admin,
+        targets.map((a) => a.id),
+      );
+      expect(res.body.newlyAcknowledged).toBe(2);
+      const by = (res.body.acknowledged as Alert[]).map((a) => a.ackedBy);
+      expect(by).toEqual(['admin@pureinsights.dev', 'admin@pureinsights.dev']);
+    });
+
+    it('viewer 403, anonymous 401, and the body is validated', async () => {
+      const [target] = await alertsAs(admin, '&status=ACKNOWLEDGED');
+      expect((await bulk(viewer, [target!.id])).status).toBe(403);
+      const anon = await request(t.app)
+        .post('/api/v1/alerts/ack')
+        .send({ alertIds: [target!.id] });
+      expect(anon.status).toBe(401);
+      for (const body of [
+        {},
+        { alertIds: [] },
+        { alertIds: [''] },
+        { alertIds: [1] },
+        { alertIds: Array.from({ length: 201 }, (_, i) => `a${i}`) },
+      ]) {
+        const res = await admin.post('/api/v1/alerts/ack').send(body);
+        expect(res.status, JSON.stringify(body).slice(0, 40)).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      }
     });
   });
 
@@ -222,6 +331,21 @@ describe('alerts API', () => {
         expect((await admin.post(`/api/v1/alerts/${target.id}/ack`)).status).toBe(500);
       });
       expect((await alertsAs(admin)).find((a) => a.id === target.id)?.status).toBe('OPEN');
+    });
+
+    it('bulk ack: 500, no ack kept, no audit row', async () => {
+      const targets = (await alertsAs(admin, '&status=OPEN')).slice(0, 2);
+      expect(targets).toHaveLength(2);
+      const before = (await auditRows('ALERT_ACK_BULK')).length;
+      await withAuditDown(async () => {
+        const res = await admin
+          .post('/api/v1/alerts/ack')
+          .send({ alertIds: targets.map((a) => a.id) });
+        expect(res.status).toBe(500);
+      });
+      const after = await alertsAs(admin);
+      for (const a of targets) expect(after.find((x) => x.id === a.id)?.status).toBe('OPEN');
+      expect(await auditRows('ALERT_ACK_BULK')).toHaveLength(before);
     });
 
     it('incident: 500 and no synthetic alert remains', async () => {

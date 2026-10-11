@@ -58,7 +58,7 @@ curl -b jar 'https://<host>/api/v1/reports?pageSize=5'
 | `GET /costs/reports`, `/costs/unit-economics`, `/costs/anomalies`, `/costs/chargeback` |   ✓   | own reports |   aggregates only   |    401    |
 | `GET /costs/chargeback?view=point_in_time`                                             |   ✓   |     403     |   aggregates only   |    401    |
 | `PATCH /reports/:id/owner`                                                             |   ✓   |     403     |         403         |    401    |
-| `POST /alerts/:id/ack`                                                                 |   ✓   | own alerts  |         403         |    401    |
+| `POST /alerts/:id/ack`, `POST /alerts/ack` (bulk)                                      |   ✓   | own alerts  |         403         |    401    |
 | `GET/POST /admin/replay`, `POST /admin/incidents`, `GET /admin/audit-log`              |   ✓   |     403     |         403         |    401    |
 
 `test/api/access-matrix.test.ts` checks every endpoint × {anonymous, viewer, owner, admin}
@@ -241,13 +241,26 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
   Socket.IO, scoped like the REST responses. See [WEBSOCKET.md](WEBSOCKET.md).
 
 - `GET /alerts?status=&severity=&resolved=&q=&page=&pageSize=` lists the current cycle's alerts:
-  active first, then most severe, then most recently seen. `resolved=false` leaves out RESOLVED
-  alerts (the default includes them; the UI sends it unless "Show resolved" is on). `q` is a
-  case-insensitive substring of the report id or name.
+  active first, then most severe, then most recently seen. `severity` takes one value or a comma
+  separated list (`severity=CRITICAL,WARNING`); the UI's default filter is Critical + Warning.
+  `resolved=false` leaves out RESOLVED alerts (the default includes them; the UI sends it unless
+  "Show resolved" is on). `q` is a case-insensitive substring of the report id or name.
 - `POST /alerts/:id/ack` (admin, or owner for their own reports) moves an alert OPEN →
   ACKNOWLEDGED and is idempotent. It returns 404 for an alert outside your scope and 409 once
   the alert has resolved. The ack is audit-logged and then broadcast as `alert:updated`; the
   socket event `alert:ack` does the same.
+- `POST /alerts/ack` (admin, or owner for their own reports) acknowledges up to 200 alerts in one
+  step: `{ "alertIds": ["…", "…"] }` returns
+  `{ acknowledged, newlyAcknowledged, skipped }`. Each id is handled like the single ack (RBAC in
+  the engine, so the same scope rules apply): OPEN → ACKNOWLEDGED, an already acknowledged alert
+  is a no-op that still appears in `acknowledged`, and an unknown id or one outside your scope is
+  skipped as `NOT_FOUND` (an owner can't tell the two apart), a RESOLVED one as `CONFLICT`.
+  Skipped ids never fail the request; a body that isn't 1–200 non-empty strings is a 400. All
+  changes share **one** `ALERT_ACK_BULK` audit row (`target` = `"<n> alerts"`, `details` =
+  `alertIds`, `requested`, `skipped`, tick and cycle). If that row can't be written, every ack
+  is withdrawn and the request fails with 500. When nothing changed (everything already
+  acknowledged or skipped) no audit row is written. Each changed alert is then broadcast as
+  `alert:updated`, exactly as for single acks.
 - `GET /admin/replay` returns `{ tick, cycle, snapshotDate, paused, speed, tickMs }`.
 - `POST /admin/replay` takes `{ "action": "pause" | "resume" }` or
   `{ "action": "speed", "value": 1 | 2 | 5 | 10 }`. Only the clock's time anchor moves, so the
@@ -302,7 +315,8 @@ commits, the alert engine reloads the owner map. If that reload fails, the PATCH
 
 `GET /admin/audit-log?action=&page=&pageSize=` lists entries newest first:
 `{ id, at, actorEmail, action, target, details }`. The actions are `OWNER_OVERRIDE`,
-`ALERT_ACK`, `REPLAY_CONTROL` and `INCIDENT_INJECT`, and `details` holds before/after values.
+`ALERT_ACK`, `ALERT_ACK_BULK`, `REPLAY_CONTROL` and `INCIDENT_INJECT`, and `details` holds
+before/after values.
 
 ## Known limitations
 

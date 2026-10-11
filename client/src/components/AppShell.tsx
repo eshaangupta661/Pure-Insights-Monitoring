@@ -83,7 +83,7 @@ export default function AppShell() {
   return (
     <div className="flex h-full">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-gray-200 bg-white transition-transform md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-gray-200 bg-white transition-transform lg:static lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -91,7 +91,7 @@ export default function AppShell() {
           <span className="text-sm font-semibold text-gray-900">Pure Insights</span>
           <button
             type="button"
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 md:hidden"
+            className="rounded p-1 text-gray-500 hover:bg-gray-100 lg:hidden"
             onClick={() => setOpen(false)}
             aria-label="Close menu"
           >
@@ -121,7 +121,7 @@ export default function AppShell() {
       </aside>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
           onClick={() => setOpen(false)}
           aria-hidden
         />
@@ -131,7 +131,7 @@ export default function AppShell() {
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4">
           <button
             type="button"
-            className="rounded p-1 text-gray-600 hover:bg-gray-100 md:hidden"
+            className="rounded p-1 text-gray-600 hover:bg-gray-100 lg:hidden"
             onClick={() => setOpen(true)}
             aria-label="Open menu"
           >
