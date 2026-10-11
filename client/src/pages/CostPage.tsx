@@ -104,17 +104,17 @@ function ReportCosts({ moneyVisible }: { moneyVisible: boolean }) {
   );
   return (
     <Widget
-      title="Cost by report"
+      title={moneyVisible ? 'Cost by report' : 'Query volume by report'}
       subtitle={
         moneyVisible
           ? 'Attributed Snowflake credits and dollars over all snapshots, highest first'
-          : 'Which reports exist and how busy they are'
+          : 'Queries per report over all snapshots. Per-report cost is visible to admins and owners.'
       }
       sql="04_report_attribution.sql"
     >
       {q.data ? (
         q.data.items.length === 0 ? (
-          <EmptyState title="No cost lines in your scope" />
+          <EmptyState title={moneyVisible ? 'No cost lines in your scope' : 'No reports'} />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -210,24 +210,21 @@ function ShareBar({ share, max }: { share: number | null; max: number }) {
   );
 }
 
-function UnitEconomics({ moneyVisible }: { moneyVisible: boolean }) {
+/** Admins and owners only: for viewers every column would be redacted, so the page hides it. */
+function UnitEconomics() {
   const [page, setPage] = useState(1);
   const q = useQuery({
     queryKey: [...COST_KEY, 'unit', page],
     queryFn: () =>
-      api<PageWithTotals<UnitEconomicsRow | ViewerUnitEconomicsRow, UnitEconomicsTotals>>(
+      api<PageWithTotals<UnitEconomicsRow, UnitEconomicsTotals>>(
         `/costs/unit-economics?page=${page}&pageSize=${COST_PAGE_SIZE}`,
       ),
     placeholderData: keepPreviousData,
   });
   return (
     <Widget
-      title="Cost per view"
-      subtitle={
-        moneyVisible
-          ? 'Cost per monthly active view, highest first. Snowflake-only and fully loaded (with AWS hosting).'
-          : 'Reports and how many snapshots each has'
-      }
+      title="Cost per view (30-day basis)"
+      subtitle="Highest first. Each snapshot’s one-day Snowflake cost is scaled to 30 days, plus the monthly AWS bill (assumed), and divided by its 30-day views; snapshots are then averaged, weighted by views."
       sql="05_unit_economics.sql"
     >
       {q.data ? (
@@ -241,15 +238,12 @@ function UnitEconomics({ moneyVisible }: { moneyVisible: boolean }) {
                   <tr>
                     <th className={th}>Report</th>
                     <th className={th}>Owner</th>
-                    {moneyVisible ? (
-                      <>
-                        <th className={`${th} text-right`}>Views</th>
-                        <th className={`${th} text-right`}>Snowflake / view</th>
-                        <th className={`${th} text-right`}>Fully loaded / view</th>
-                      </>
-                    ) : (
-                      <th className={`${th} text-right`}>Snapshots</th>
-                    )}
+                    <th className={`${th} text-right`}>
+                      View weight{' '}
+                      <InfoTip text="Monthly active views summed over the report’s costed snapshots. It only weights the average across snapshots; it is not a count of distinct viewers." />
+                    </th>
+                    <th className={`${th} text-right`}>Snowflake / view</th>
+                    <th className={`${th} text-right`}>Fully loaded / view</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -267,21 +261,15 @@ function UnitEconomics({ moneyVisible }: { moneyVisible: boolean }) {
                       <td className="py-2 pr-3 text-gray-700">
                         {r.currentOwner ?? <span className="text-gray-500 italic">No owner</span>}
                       </td>
-                      {'fullyLoadedCostPerView' in r ? (
-                        <>
-                          <td className="py-2 pr-3 text-right tabular-nums">
-                            {r.costedViews === null ? '—' : formatInt(r.costedViews)}
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums">
-                            <UnitCost value={r.snowflakeCostPerView} row={r} />
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums">
-                            <UnitCost value={r.fullyLoadedCostPerView} row={r} />
-                          </td>
-                        </>
-                      ) : (
-                        <td className="py-2 pr-3 text-right tabular-nums">{r.snapshotCount}</td>
-                      )}
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        {r.costedViews === null ? '—' : formatInt(r.costedViews)}
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        <UnitCost value={r.snowflakeCostPerView} row={r} />
+                      </td>
+                      <td className="py-2 pr-3 text-right tabular-nums">
+                        <UnitCost value={r.fullyLoadedCostPerView} row={r} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -484,8 +472,12 @@ function Chargeback({ role }: { role: 'admin' | 'owner' | 'viewer' }) {
   };
   return (
     <Widget
-      title="Owner chargeback"
-      subtitle="Cost per owner, including spend nobody owns"
+      title={role === 'viewer' ? 'Reports per owner' : 'Owner chargeback'}
+      subtitle={
+        role === 'viewer'
+          ? 'Reports and snapshots per owner, including those nobody owns. Per-owner cost is visible to admins and owners.'
+          : 'Cost per owner, including spend nobody owns'
+      }
       sql="07_owner_chargeback.sql"
     >
       {role !== 'owner' && (
@@ -594,13 +586,15 @@ export default function CostPage() {
   const totals = useQuery({
     queryKey: [...COST_KEY, 'totals'],
     queryFn: async () => {
-      const [costs, unit] = await Promise.all([
+      const [costs, unit, chargeback] = await Promise.all([
         api<PageWithTotals<ViewerCostRow, CostReportsTotals>>('/costs/reports?pageSize=1'),
         api<PageWithTotals<ViewerUnitEconomicsRow, UnitEconomicsTotals>>(
           '/costs/unit-economics?pageSize=1',
         ),
+        // Default view per role; AWS is summed over all snapshots in either view.
+        api<PageWithTotals<ViewerChargebackRow, ChargebackTotals>>('/costs/chargeback?pageSize=1'),
       ]);
-      return { costs: costs.totals, unit: unit.totals };
+      return { costs: costs.totals, unit: unit.totals, chargeback: chargeback.totals };
     },
   });
   const anomalies = useQuery({
@@ -634,8 +628,8 @@ export default function CostPage() {
             />
             <Tile
               label="AWS hosting cost"
-              value={formatUsd(totals.data.unit.awsCostUsd)}
-              detail="Over snapshots with known Snowflake credits"
+              value={formatUsd(totals.data.chargeback.awsCostUsd)}
+              detail="All snapshots; same basis as the chargeback total"
             />
             <Tile
               label="Fully loaded cost per view"
@@ -644,7 +638,15 @@ export default function CostPage() {
                   ? NA_ZERO_VIEWS
                   : formatPerView(totals.data.unit.fullyLoadedCostPerView)
               }
-              detail={`${formatInt(totals.data.unit.costedViews)} monthly views counted`}
+              detail={
+                <>
+                  30-day basis, weighted by {formatInt(totals.data.unit.costedViews)} views summed
+                  across snapshots{' '}
+                  <InfoTip
+                    text={`Monthly active views are summed over the snapshots with known Snowflake credits and used only as weights, not as a count of viewers. This ratio uses those snapshots only, so its AWS part (${formatUsd(totals.data.unit.awsCostUsd)}) leaves out the AWS of quarantined snapshots that the AWS tile includes.`}
+                  />
+                </>
+              }
             />
           </>
         ) : (
@@ -680,7 +682,7 @@ export default function CostPage() {
       )}
 
       <ReportCosts moneyVisible={moneyVisible} />
-      <UnitEconomics moneyVisible={moneyVisible} />
+      {moneyVisible && <UnitEconomics />}
       <Widget
         title="Orphaned reports"
         subtitle={`${atSnapshot}: nobody owns these, whatever their usage. Recommended action: reassign an owner.`}
@@ -694,7 +696,7 @@ export default function CostPage() {
       </Widget>
       <Widget
         title="Zombie reports"
-        subtitle={`${atSnapshot}: almost nobody uses these (owned or not). Recommended action: retire. The only source of estimated savings.`}
+        subtitle={`${atSnapshot}: almost nobody uses these (owned or not). Recommended action: retire.${moneyVisible ? ' The only source of estimated savings.' : ''}`}
         sql="06_anomalies.sql"
       >
         {a ? (

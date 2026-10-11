@@ -131,6 +131,18 @@ pages never overlap.
 **Money** is unrounded USD (`…Usd`), and credits are metered Snowflake credits. Rounding is the
 client's job. `null` means unknown: zero views (DQ05), or quarantined negative credits (DQ02).
 
+**Cost per view uses one period.** A snapshot's Snowflake cost covers one day, while
+`monthlyActiveViews` covers 30 days, so the Snowflake part is scaled to 30 days
+(× `DAYS_PER_MONTH`) before dividing. AWS hosting is assumed to be a monthly bill and is added
+as is. Report-level figures are ratios of totals over the costed snapshots (credits not
+quarantined). `costedViews` there is monthly views summed across snapshots: a weight for the
+average, not a count of viewers.
+
+**AWS totals have two bases.** `/costs/chargeback` totals sum AWS hosting over every snapshot.
+`/costs/unit-economics` sums it only over costed snapshots, so that the cost-per-view numerator
+and denominator cover the same snapshots. The difference is the AWS of the 24 quarantined
+snapshots. The Cost page's AWS tile uses the chargeback (all-snapshot) figure.
+
 **Time:** reports and overview describe the replay's **current snapshot**. The tick advances
 every 10 s; snapshot `i` is the date `2026-09-21 + i`. Ownership and cost totals span all 20
 snapshots.
@@ -173,7 +185,7 @@ snapshots.
 | endpoint                                                             | rows                                   | notes                                                                                                                                                                 |
 | -------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /costs/reports?sort=cost\|queries\|reportId`                    | per report + `UNATTRIBUTED`            | attributed, active and overhead credits, USD, share                                                                                                                   |
-| `GET /costs/unit-economics?sort=costPerView\|reportId`               | per report                             | Snowflake-only and fully loaded cost per view; NULL for no costed views                                                                                               |
+| `GET /costs/unit-economics?sort=costPerView\|reportId`               | per report                             | Snowflake-only and fully loaded cost per view on a 30-day basis (below); NULL for no costed views                                                                     |
 | `GET /costs/anomalies`                                               | short sections, not paginated          | `perViewOutliers`, `orphaned`, `zombies`, `awsViewsMismatch`, `quarantinedSnapshots`, plus `snapshotIdx` and `totals` (see below)                                     |
 | `GET /costs/chargeback?view=point_in_time\|current&sort=cost\|owner` | per owner + `UNOWNED` + `UNATTRIBUTED` | point-in-time (admins and viewers; 403 for owners): each snapshot charged to that snapshot's owner. current (owners' default): whole history charged to today's owner |
 

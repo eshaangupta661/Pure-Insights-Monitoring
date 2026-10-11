@@ -36,7 +36,7 @@
 --         is_orphaned marks a zombie that is also unowned.
 --   * Estimated savings come only from zombies (retiring a report stops its spend; reassigning
 --     an orphan doesn't): the snapshot's attributed credits (one snapshot = one day) ×
---     savings_days_per_month, priced at credit_price_usd. AWS hosting is excluded. A zombie
+--     days_per_month, priced at credit_price_usd. AWS hosting is excluded. A zombie
 --     whose credits were quarantined (DQ02) has unknown cost, so NULL savings, not 0.
 --   * Both views read REPORT_CURRENT_OWNER, so they are live (follow overrides); the API reads
 --     them directly rather than the copies stored at ingest.
@@ -113,8 +113,8 @@ SELECT
     u.views,
     u.attributed_credits,
     u.snowflake_cost_usd,
-    u.attributed_credits * p.savings_days_per_month      AS estimated_monthly_savings_credits,
-    u.snowflake_cost_usd * p.savings_days_per_month      AS estimated_monthly_savings_usd,
+    u.attributed_credits * p.days_per_month      AS estimated_monthly_savings_credits,
+    u.snowflake_cost_usd * p.days_per_month      AS estimated_monthly_savings_usd,
     a.attributed_credits                                 AS total_attributed_credits,
     a.attributed_cost_usd                                AS total_attributed_cost_usd
 FROM UNIT_ECONOMICS_SNAPSHOT u

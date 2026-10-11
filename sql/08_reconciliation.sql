@@ -27,7 +27,7 @@
 --   CONSISTENCY   The 06 orphaned / zombie split agrees with an independent recomputation from
 --                 the raw CSV text and the query log: K1 orphaned rows = DQ01 rows (override
 --                 aware), K2 zombie rows = raw rows with views < cost_low_views, K3 Σ zombie
---                 savings = savings_days_per_month × query credits on those snapshots' days,
+--                 savings = days_per_month × query credits on those snapshots' days,
 --                 K4 orphaned rows that aren't zombies carry no savings (savings come only from
 --                 zombies). They hold on real logs too.
 -- Assumptions :
@@ -113,7 +113,7 @@ zombies_actual AS (
     FROM ANOMALY_ZOMBIE_REPORTS
 ),
 zombie_query_credits AS (
-    SELECT COALESCE(SUM(q.attributed_credits), 0) * MAX(p.savings_days_per_month) AS savings_credits
+    SELECT COALESCE(SUM(q.attributed_credits), 0) * MAX(p.days_per_month) AS savings_credits
     FROM QUERY_ATTRIBUTED_COST q
     JOIN REPORT_SNAPSHOTS s ON s.report_id = q.report_id AND s.snapshot_date = q.usage_date
     CROSS JOIN PARAMS p
@@ -176,7 +176,7 @@ checks AS (
            e.n, a.n FROM zombies_expected e CROSS JOIN zombies_actual a
     UNION ALL
     SELECT 'K3_SAVINGS_EQ_ZOMBIE_QUERY_CREDITS', 'CONSISTENCY',
-           'Σ zombie estimated savings (credits) = savings_days_per_month × Σ query credits on zombie snapshots',
+           'Σ zombie estimated savings (credits) = days_per_month × Σ query credits on zombie snapshots',
            e.savings_credits, a.savings_credits
     FROM zombie_query_credits e CROSS JOIN zombies_actual a
     UNION ALL

@@ -191,10 +191,14 @@ export interface ViewerReportSummary {
 
 /** ViewerReportSummary plus cost (admins, and owners for their own reports). */
 export interface ReportSummary extends ViewerReportSummary {
-  /** This snapshot's Snowflake cost; null when its credits were quarantined (DQ02). */
+  /** This snapshot's Snowflake cost (one day); null when its credits were quarantined (DQ02). */
   snowflakeCostUsd: number | null;
+  /** This snapshot's AWS hosting (assumed monthly). */
   awsCostUsd: number;
-  /** null for zero views (DQ05) or quarantined credits. */
+  /**
+   * 30-day basis: (snowflakeCostUsd × DAYS_PER_MONTH + awsCostUsd) / monthly views, so cost and
+   * views cover the same period. null for zero views (DQ05) or quarantined credits.
+   */
   fullyLoadedCostPerView: number | null;
   /** Attributed Snowflake cost over all snapshots. */
   attributedCostUsd: number;
@@ -218,9 +222,13 @@ export interface SnapshotPoint extends ViewerSnapshotPoint {
   creditsReported: number;
   /** null when quarantined. */
   attributedCredits: number | null;
+  /** One day of Snowflake cost. */
   snowflakeCostUsd: number | null;
+  /** Monthly AWS hosting (assumed). */
   awsCostUsd: number;
+  /** 30-day cost: snowflakeCostUsd × DAYS_PER_MONTH + awsCostUsd. */
   fullyLoadedCostUsd: number | null;
+  /** fullyLoadedCostUsd / monthly views (both 30 days). */
   fullyLoadedCostPerView: number | null;
 }
 
@@ -238,8 +246,9 @@ export interface ReportCost {
   attributedCostUsd: number;
   /** Snapshots with known credits (not quarantined). */
   costedSnapshotCount: number;
-  /** Snowflake + AWS over costed snapshots. */
+  /** Σ 30-day cost (Snowflake × DAYS_PER_MONTH + AWS) over costed snapshots; the ratio's numerator. */
   fullyLoadedCostUsd: number | null;
+  /** View-weighted average 30-day cost per view over costed snapshots. */
   fullyLoadedCostPerView: number | null;
 }
 
@@ -306,10 +315,15 @@ export interface ViewerUnitEconomicsRow {
 
 export interface UnitEconomicsRow extends ViewerUnitEconomicsRow {
   costedSnapshotCount: number;
+  /** Σ daily Snowflake cost over costed snapshots (actual spend in the period). */
   snowflakeCostUsd: number | null;
+  /** Σ AWS hosting over costed snapshots only (the ratio's basis; /costs/chargeback counts all). */
   awsCostUsd: number | null;
+  /** Σ 30-day fully loaded cost over costed snapshots (the ratio's numerator). */
   fullyLoadedCostUsd: number | null;
+  /** Σ monthly views over costed snapshots: a weight for the average, not distinct viewers. */
   costedViews: number | null;
+  /** 30-day basis, view-weighted over costed snapshots. */
   snowflakeCostPerView: number | null;
   fullyLoadedCostPerView: number | null;
 }
@@ -317,10 +331,12 @@ export interface UnitEconomicsRow extends ViewerUnitEconomicsRow {
 export interface UnitEconomicsTotals {
   reportCount: number;
   snowflakeCostUsd: number;
+  /** Over costed snapshots only, like the rows. The all-snapshot AWS total is in chargeback totals. */
   awsCostUsd: number;
   fullyLoadedCostUsd: number;
+  /** Σ monthly views over costed snapshots: the weight, not a count of viewers. */
   costedViews: number;
-  /** Ratio of totals: Σ fully loaded cost / Σ costed views. */
+  /** Ratio of totals: Σ 30-day fully loaded cost / Σ costed views. */
   fullyLoadedCostPerView: number | null;
 }
 
@@ -384,7 +400,7 @@ export interface ZombieReport extends ViewerZombieReport {
   /** This snapshot's attributed credits; null when quarantined (DQ02). */
   attributedCredits: number | null;
   snowflakeCostUsd: number | null;
-  /** This snapshot's Snowflake cost × SAVINGS_DAYS_PER_MONTH; null when its cost is unknown. */
+  /** This snapshot's Snowflake cost × DAYS_PER_MONTH; null when its cost is unknown. */
   estimatedMonthlySavingsUsd: number | null;
   /** The same estimate in credits. */
   estimatedMonthlySavingsCredits: number | null;

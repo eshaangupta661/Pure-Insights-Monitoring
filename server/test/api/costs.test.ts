@@ -95,6 +95,21 @@ describe('costs API', () => {
       );
     });
 
+    it('AWS: chargeback counts every snapshot; unit economics only costed ones (the gap is quarantined AWS)', async () => {
+      const [aws] = await t.sql<{ all_usd: number; quarantined_usd: number }>(
+        `SELECT SUM(aws_hosting_cost_usd) AS all_usd,
+                SUM(CASE WHEN credits_clean IS NULL THEN aws_hosting_cost_usd END) AS quarantined_usd
+         FROM REPORT_SNAPSHOTS`,
+      );
+      const unit = (await admin.get('/api/v1/costs/unit-economics')).body.totals;
+      for (const view of ['point_in_time', 'current']) {
+        const cb = (await admin.get(`/api/v1/costs/chargeback?view=${view}`)).body.totals;
+        expect(cb.awsCostUsd).toBeCloseTo(aws!.all_usd, 6);
+      }
+      expect(aws!.quarantined_usd).toBeGreaterThan(0);
+      expect(unit.awsCostUsd).toBeCloseTo(aws!.all_usd - aws!.quarantined_usd, 6);
+    });
+
     it('viewers: 403 on the cost sort', async () => {
       expect((await viewer.get('/api/v1/costs/unit-economics?sort=costPerView')).status).toBe(403);
       expect((await viewer.get('/api/v1/costs/unit-economics')).status).toBe(200);
@@ -120,11 +135,11 @@ describe('costs API', () => {
       expect(a.zombies.every((z) => z.views < config.COST_LOW_VIEWS)).toBe(true);
       for (const z of a.zombies) {
         expect(z.estimatedMonthlySavingsCredits).toBeCloseTo(
-          z.attributedCredits! * config.SAVINGS_DAYS_PER_MONTH,
+          z.attributedCredits! * config.DAYS_PER_MONTH,
           9,
         );
         expect(z.estimatedMonthlySavingsUsd).toBeCloseTo(
-          z.snowflakeCostUsd! * config.SAVINGS_DAYS_PER_MONTH,
+          z.snowflakeCostUsd! * config.DAYS_PER_MONTH,
           9,
         );
       }

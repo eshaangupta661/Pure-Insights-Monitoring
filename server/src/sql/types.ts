@@ -44,6 +44,7 @@ export interface UnitEconomicsSnapshotRow {
   aws_cost_usd: number;
   attributed_credits: number | null;
   snowflake_cost_usd: number | null;
+  snowflake_cost_30d_usd: number | null;
   fully_loaded_cost_usd: number | null;
   snowflake_cost_per_view: number | null;
   fully_loaded_cost_per_view: number | null;
@@ -56,6 +57,7 @@ export interface UnitEconomicsReportRow {
   snapshot_count: number;
   costed_snapshot_count: number;
   snowflake_cost_usd: number | null;
+  snowflake_cost_30d_usd: number | null;
   aws_cost_usd: number | null;
   fully_loaded_cost_usd: number | null;
   costed_views: number | null;
@@ -85,6 +87,7 @@ export interface AnomalyOrphanedRow {
   views: number;
   attributed_credits: number | null;
   snowflake_cost_usd: number | null;
+  snowflake_cost_30d_usd: number | null;
   is_zombie: boolean;
   total_attributed_credits: number;
   total_attributed_cost_usd: number;
@@ -100,6 +103,7 @@ export interface AnomalyZombieRow {
   views: number;
   attributed_credits: number | null;
   snowflake_cost_usd: number | null;
+  snowflake_cost_30d_usd: number | null;
   estimated_monthly_savings_credits: number | null;
   estimated_monthly_savings_usd: number | null;
   total_attributed_credits: number;

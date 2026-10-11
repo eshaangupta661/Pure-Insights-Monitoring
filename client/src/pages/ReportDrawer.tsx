@@ -14,6 +14,7 @@ import { ANOMALIES_KEY, OVERVIEW_KEY, REPORTS_KEY, useTrend } from '../api/queri
 import { useAuth } from '../auth/AuthProvider';
 import {
   ErrorState,
+  InfoTip,
   RefreshBadge,
   Skeleton,
   controlClass,
@@ -187,7 +188,10 @@ function DrawerBody({ report }: { report: Detail }) {
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-gray-500">Cost per view</dt>
+              <dt className="text-xs text-gray-500">
+                Cost per view (30-day basis){' '}
+                <InfoTip text="This snapshot’s Snowflake cost covers one day, so it is scaled to 30 days and added to the monthly AWS bill (assumed monthly) before dividing by monthly active views. Cost and views then cover the same 30 days." />
+              </dt>
               <dd className="tabular-nums">
                 {report.fullyLoadedCostPerView === null
                   ? report.monthlyActiveViews === 0

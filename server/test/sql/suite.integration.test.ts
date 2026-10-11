@@ -150,6 +150,37 @@ describe('SQL suite (real CSV → :memory:)', () => {
       }
     });
 
+    it('cost per view uses one period: one-day Snowflake cost × 30 + monthly AWS, over 30-day views', () => {
+      const days = config.DAYS_PER_MONTH;
+      const costed = results.views.UNIT_ECONOMICS_SNAPSHOT.filter(
+        (r) => r.snowflake_cost_usd !== null && r.views > 0,
+      );
+      expect(costed.length).toBeGreaterThan(1900);
+      for (const r of costed) {
+        expect(r.snowflake_cost_30d_usd!).toBeCloseTo(r.snowflake_cost_usd! * days, 6);
+        expect(r.fully_loaded_cost_usd!).toBeCloseTo(
+          r.snowflake_cost_usd! * days + r.aws_cost_usd,
+          6,
+        );
+        expect(r.snowflake_cost_per_view!).toBeCloseTo(r.snowflake_cost_30d_usd! / r.views, 9);
+        expect(r.fully_loaded_cost_per_view!).toBeCloseTo(r.fully_loaded_cost_usd! / r.views, 9);
+      }
+      // Report level: ratio of the 30-day sums over the same (costed) snapshots.
+      for (const e of results.views.UNIT_ECONOMICS_REPORT) {
+        const snaps = results.views.UNIT_ECONOMICS_SNAPSHOT.filter(
+          (r) => r.report_id === e.report_id && r.attributed_credits !== null,
+        );
+        const views = sum(snaps.map((r) => r.views));
+        expect(e.costed_views).toBe(views);
+        expect(e.snowflake_cost_usd!).toBeCloseTo(sum(snaps.map((r) => r.snowflake_cost_usd)), 6);
+        if (views > 0)
+          expect(e.fully_loaded_cost_per_view!).toBeCloseTo(
+            sum(snaps.map((r) => r.fully_loaded_cost_usd)) / views,
+            9,
+          );
+      }
+    });
+
     it('quarantined snapshots have unknown (NULL) Snowflake cost, not 0', () => {
       const unknown = results.views.UNIT_ECONOMICS_SNAPSHOT.filter(
         (r) => r.attributed_credits === null,
@@ -286,11 +317,11 @@ describe('SQL suite (real CSV → :memory:)', () => {
           expect(r.estimated_monthly_savings_usd).toBeNull();
         } else {
           expect(r.estimated_monthly_savings_credits).toBeCloseTo(
-            r.attributed_credits * config.SAVINGS_DAYS_PER_MONTH,
+            r.attributed_credits * config.DAYS_PER_MONTH,
             9,
           );
           expect(r.estimated_monthly_savings_usd).toBeCloseTo(
-            r.attributed_credits * config.CREDIT_PRICE_USD * config.SAVINGS_DAYS_PER_MONTH,
+            r.attributed_credits * config.CREDIT_PRICE_USD * config.DAYS_PER_MONTH,
             6,
           );
         }

@@ -114,7 +114,7 @@ credits under that assumed rate. They are not a measurement.
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CONSERVATION** | C1 queries = metered · C2 every warehouse-hour = metered · C3 reports + `UNATTRIBUTED` = queries · C4 point-in-time chargeback (owners + `UNOWNED` + `UNATTRIBUTED`) = queries · C5 current-owner chargeback (same) = queries                                             | Holds for any correct allocation over **real** Snowflake logs, whatever the workload: no credit is created, lost or double counted on the way from metering to owners. |
 | **GROUND_TRUTH** | G1 per (report, snapshot) and G2 per report: attributed ÷ (1 + rate) = `credits_clean` · G3 quarantined snapshots have no queries · G4 every query is tagged (unattributed = 0)                                                                                           | Possible only because the simulator knows the answer, or properties of the data it generated.                                                                          |
-| **CONSISTENCY**  | K1 orphaned rows = DQ01 rows from the raw CSV (override aware) · K2 zombie rows = raw rows with views < `cost_low_views` · K3 Σ zombie savings = `savings_days_per_month` × Σ query credits on those snapshots' days · K4 orphaned, non-zombie snapshots carry no savings | The 06 orphaned/zombie split agrees with an independent recomputation from the raw CSV text and the query log. Holds on real logs too.                                 |
+| **CONSISTENCY**  | K1 orphaned rows = DQ01 rows from the raw CSV (override aware) · K2 zombie rows = raw rows with views < `cost_low_views` · K3 Σ zombie savings = `days_per_month` × Σ query credits on those snapshots' days · K4 orphaned, non-zombie snapshots carry no savings | The 06 orphaned/zombie split agrees with an independent recomputation from the raw CSV text and the query log. Holds on real logs too.                                 |
 
 G4 is deliberately not a conservation check: "no untagged queries" is a property of the
 simulator, not of correct accounting. On a real account, analyst queries on a shared warehouse
@@ -174,6 +174,10 @@ translation:
 - **Quarantined credits:** a snapshot quarantined by DQ02 has _unknown_ Snowflake cost (NULL,
   not 0), and no queries are simulated for it. The cost SQL (03–08) reads only `credits_clean`;
   06 reads quarantined values from `QUARANTINE.raw_value`.
+- **Unit-cost period:** cost per view is on a 30-day basis. Monthly views cover 30 days, but a
+  snapshot's Snowflake cost covers one day, so it is multiplied by `days_per_month` (30) first.
+  `aws_hosting_cost_usd` is assumed to be a monthly bill (the CSV doesn't say) and is added as
+  is. The same parameter turns a zombie's daily cost into monthly savings in 06.
 - **Unit cost:** every division by views uses `NULLIF(views, 0)`, so a zero-view snapshot gets a
   NULL unit cost. Without it, DuckDB returns Infinity and Snowflake raises a division error.
   The `LN(...)` calls in 02 and 06 are also guarded with `CASE` inside the call, not only by the
@@ -182,7 +186,7 @@ translation:
   snapshot). _Orphaned_: no owner at that snapshot, whatever its usage (recommended action:
   reassign); the owner is the `OWNER_OVERRIDES` row when one exists, else that snapshot's
   `owner_email`. _Zombie_: views < `cost_low_views`, owned or not (action: retire). Only zombies
-  carry estimated savings = the snapshot's attributed credits × `savings_days_per_month` (30),
+  carry estimated savings = the snapshot's attributed credits × `days_per_month` (30),
   priced at `credit_price_usd`; NULL when the credits were quarantined.
 - **Two chargeback views:** point-in-time charges each snapshot to that snapshot's owner;
   current charges all history to today's owner. Reports change owners 7–13 times, so the two

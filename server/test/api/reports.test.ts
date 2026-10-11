@@ -183,6 +183,16 @@ describe('reports API (admin)', () => {
       }
     });
 
+    it('cost per view in the detail is on a 30-day basis (same period as monthly views)', async () => {
+      const d: ReportDetail = (await admin.get('/api/v1/reports/RPT_203')).body;
+      const now = d.history[d.snapshotIdx]!;
+      expect(now.monthlyActiveViews).toBeGreaterThan(0);
+      const expected =
+        (now.snowflakeCostUsd! * config.DAYS_PER_MONTH + now.awsCostUsd) / now.monthlyActiveViews;
+      expect(d.fullyLoadedCostPerView).toBeCloseTo(expected, 9);
+      expect(now.fullyLoadedCostPerView).toBeCloseTo(expected, 9);
+    });
+
     it('a quarantined snapshot shows the raw negative credits and unknown (NULL) cost', async () => {
       const [q] = await t.sql<{ report_id: string; snapshot_idx: number }>(
         'SELECT report_id, snapshot_idx FROM QUARANTINE ORDER BY row_idx LIMIT 1',

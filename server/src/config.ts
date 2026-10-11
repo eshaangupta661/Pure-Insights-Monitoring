@@ -92,8 +92,11 @@ export const config = {
   LATENCY_CRITICAL_SEC: 30,
   /** Lower edges (s) of the Overview latency histogram; the first bucket starts at 0. */
   LATENCY_BUCKET_EDGES_SEC: [5, 10, 15, 20, 30, 45],
-  /** Days a zombie snapshot's daily spend is projected over for its estimated savings (/sql/06). */
-  SAVINGS_DAYS_PER_MONTH: 30,
+  /**
+   * Days in a month. A snapshot's Snowflake cost covers one day; it is scaled by this to a 30-day
+   * basis for cost per view (/sql/05, matching 30-day views) and zombie savings (/sql/06).
+   */
+  DAYS_PER_MONTH: 30,
   COST_ROBUST_Z: 3.5,
   COST_LOW_VIEWS: 50,
   COST_HIGH_AWS_USD: 300,

@@ -14,7 +14,7 @@ export const PARAM_KEYS = [
   'COST_ROBUST_Z',
   'COST_LOW_VIEWS',
   'COST_HIGH_AWS_USD',
-  'SAVINGS_DAYS_PER_MONTH',
+  'DAYS_PER_MONTH',
   'RECON_TOLERANCE',
 ] as const satisfies readonly (keyof typeof config)[];
 
