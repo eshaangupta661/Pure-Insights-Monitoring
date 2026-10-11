@@ -6,6 +6,9 @@ real-time WebSocket alerts.
 
 **Live demo:** https://pure-insights-command-center.onrender.com
 
+**About the data:** the source CSV holds 100 dashboards across 20 daily snapshots. The app replays
+those snapshots on a clock to simulate a live environment, so alerts and KPIs change as it runs.
+
 **Walkthrough** (all five pages, then filters, report detail, replay controls, incident injection and acknowledge):
 
 ![Pure Insights Command Center walkthrough](docs/assets/demo.gif)
