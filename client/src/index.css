@@ -1,1 +1,22 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* The one accent. Everything else is neutral gray; red/amber appear only for severity. */
+  --color-accent: #2a78d6;
+  --color-accent-strong: #1f63b5;
+  --color-accent-soft: #eaf2fc;
+  --color-critical: #c93a39;
+  --color-warning: #b87500;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-gray-50);
+  color: var(--color-gray-900);
+}
