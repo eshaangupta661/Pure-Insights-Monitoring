@@ -420,7 +420,13 @@ describe('broadcasts are scoped by room', () => {
   });
 
   it('a bulk ack broadcasts one alert:updated per changed alert, scoped like single acks', async () => {
-    const openNow = lastSnapshot(admin).filter((a) => a.status === 'OPEN');
+    // The live list, not the connect-time snapshot: alerts in that may have resolved since.
+    const openNow: Alert[] = (
+      await api()
+        .get('/api/v1/alerts?status=OPEN&pageSize=100')
+        .set('Authorization', bearerFor('admin'))
+        .expect(200)
+    ).body.items;
     const mine = openNow.find((a) => a.ownerEmail === OWNER && a.id !== mineId);
     const theirs = openNow.find((a) => a.ownerEmail !== OWNER && a.id !== otherId);
     if (!mine || !theirs) throw new Error('fixture: need an OPEN alert for the owner and another');

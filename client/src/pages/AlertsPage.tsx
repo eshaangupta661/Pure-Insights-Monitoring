@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { Alert, AlertSort, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
+import type { Alert, AlertRuleId, AlertSort, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
 import { api } from '../api/http';
 import { ALERTS_KEY, OVERVIEW_KEY } from '../api/queries';
 import {
@@ -47,6 +47,9 @@ const RULE_LABEL: Record<Alert['ruleId'], string> = {
   REFRESH_FAILED: 'Refresh failed',
   REFRESH_UNKNOWN: 'Refresh unknown',
 };
+
+const RULE_IDS = Object.keys(RULE_LABEL) as AlertRuleId[];
+const SORTS: readonly AlertSort[] = ['severity', 'report', 'snapshot'];
 
 const isOneOf = <T extends string>(list: readonly T[], v: string | null): v is T =>
   v !== null && (list as readonly string[]).includes(v);
@@ -209,8 +212,11 @@ interface Group {
   top: Severity;
 }
 
-/** Alerts per report, most severe report first, then the one with the most active alerts. */
-function groupByReport(alerts: Alert[]): Group[] {
+/**
+ * Alerts per report: by report id when sorting by report, otherwise most severe report first,
+ * then the one with the most active alerts.
+ */
+function groupByReport(alerts: Alert[], sort: AlertSort): Group[] {
   const byReport = new Map<string, Group>();
   for (const a of alerts) {
     const g = byReport.get(a.reportId);
@@ -230,6 +236,7 @@ function groupByReport(alerts: Alert[]): Group[] {
   const active = (g: Group) => g.alerts.filter((a) => a.status !== 'RESOLVED').length;
   return [...byReport.values()].sort(
     (a, b) =>
+      (sort === 'report' ? a.reportId.localeCompare(b.reportId) : 0) ||
       SEVERITY_RANK[b.top] - SEVERITY_RANK[a.top] ||
       active(b) - active(a) ||
       a.reportId.localeCompare(b.reportId),
@@ -250,7 +257,10 @@ export default function AlertsPage() {
   const severityParam = params.get('severity') ?? '';
   const showResolved = params.get('resolved') === 'true';
   const grouped = params.get('group') === 'report';
-  const sort: AlertSort = params.get('sort') === 'snapshot' ? 'snapshot' : 'severity';
+  const sortParam = params.get('sort');
+  const sort: AlertSort = isOneOf(SORTS, sortParam) ? sortParam : 'severity';
+  const ruleParam = params.get('rule');
+  const rule = isOneOf(RULE_IDS, ruleParam) ? ruleParam : undefined;
   const parsedStatus = isOneOf(STATUSES, statusParam) ? statusParam : undefined;
   // RESOLVED is only selectable while resolved alerts are shown.
   const status = parsedStatus === 'RESOLVED' && !showResolved ? undefined : parsedStatus;
@@ -298,6 +308,7 @@ export default function AlertsPage() {
   const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (status) query.set('status', status);
   if (severityOption.api) query.set('severity', severityOption.api);
+  if (rule) query.set('rule', rule);
   if (!showResolved) query.set('resolved', 'false');
   if (q) query.set('q', q);
   if (sort !== 'severity') query.set('sort', sort);
@@ -308,7 +319,7 @@ export default function AlertsPage() {
   });
 
   const items = useMemo(() => alerts.data?.items ?? [], [alerts.data]);
-  const groups = useMemo(() => (grouped ? groupByReport(items) : []), [grouped, items]);
+  const groups = useMemo(() => (grouped ? groupByReport(items, sort) : []), [grouped, items, sort]);
 
   // A selection belongs to the list it was made on: drop ids that left it (filter, page, ack).
   const visibleOpen = useMemo(
@@ -390,7 +401,7 @@ export default function AlertsPage() {
     acking: acking === a.id,
   });
 
-  const filtered = Boolean(status || severityParam || q);
+  const filtered = Boolean(status || severityParam || rule || q);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -435,13 +446,29 @@ export default function AlertsPage() {
             </select>
           </label>
           <label className="flex items-center gap-2 text-sm text-gray-700">
+            Type
+            <select
+              className={controlClass}
+              value={rule ?? ''}
+              onChange={(e) => setFilter('rule', e.target.value)}
+            >
+              <option value="">All types</option>
+              {RULE_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {RULE_LABEL[id]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
             Sort by
             <select
               className={controlClass}
               value={sort}
-              onChange={(e) => setFilter('sort', e.target.value === 'snapshot' ? 'snapshot' : '')}
+              onChange={(e) => setFilter('sort', e.target.value === 'severity' ? '' : e.target.value)}
             >
-              <option value="severity">Severity</option>
+              <option value="severity">Severity (worst first)</option>
+              <option value="report">Report number</option>
               <option value="snapshot">Snapshot (newest first)</option>
             </select>
           </label>

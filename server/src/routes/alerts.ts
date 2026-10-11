@@ -17,8 +17,10 @@ export const alertRoutes = [
     tag: 'alerts',
     summary: 'Alerts of the current replay cycle',
     description:
-      'Resolved last; the rest most severe first (OPEN before ACKNOWLEDGED, then most recently seen), ' +
-      'or with sort=snapshot by the snapshot they opened at, newest first. ' +
+      'Resolved last; the rest most severe first (within a severity, refresh failures by longest ' +
+      'failing run, then load-time alerts by highest peak load time), or with sort=report by ' +
+      'report id, or with sort=snapshot by the snapshot they opened at, newest first. ' +
+      '`rule` narrows to one alert type. ' +
       'Owners see alerts for reports they currently own; admins and viewers see all. Alerts are ' +
       'kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to ' +
       'snapshot 0.',
@@ -31,6 +33,7 @@ export const alertRoutes = [
         (await syncedAlerts(deps)).list(scope, {
           status: query.status,
           severity: query.severity,
+          rule: query.rule,
           resolved: query.resolved,
           q: query.q,
           sort: query.sort,

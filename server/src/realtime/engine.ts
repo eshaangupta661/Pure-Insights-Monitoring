@@ -18,6 +18,7 @@
 import type {
   Alert,
   ActiveAlertCounts,
+  AlertRuleId,
   AlertSort,
   AlertStatus,
   AuthUser,
@@ -73,6 +74,8 @@ export interface IncidentResult {
 }
 
 const STATUS_ORDER: Record<AlertStatus, number> = { OPEN: 0, ACKNOWLEDGED: 1, RESOLVED: 2 };
+/** Tie-break between alert types of the same severity. */
+const RULE_ORDER: Record<AlertRuleId, number> = { REFRESH_FAILED: 0, LATENCY: 1, REFRESH_UNKNOWN: 2 };
 const NO_EVENTS = (): AlertEvents => ({ opened: [], updated: [], rebuilt: false, reset: false });
 
 /** Fields whose change is worth an `alert:updated` (not lastSeenTick/value, which move every tick). */
@@ -192,9 +195,11 @@ export class AlertEngine {
       status?: AlertStatus;
       /** Any of these severities. */
       severity?: readonly Severity[];
+      /** Only this alert type. */
+      rule?: AlertRuleId;
       /** false = leave out RESOLVED alerts. */
       resolved?: boolean;
-      /** severity (default): most severe first; snapshot: opened most recently first. */
+      /** severity (default): most severe, then worst first; report: by id; snapshot: newest first. */
       sort?: AlertSort;
       /** Case-insensitive substring of the report id or name. */
       q?: string;
@@ -209,6 +214,7 @@ export class AlertEngine {
           scopeMatches(scope, a.ownerEmail) &&
           (filter.status === undefined || a.status === filter.status) &&
           (filter.severity === undefined || filter.severity.includes(a.severity)) &&
+          (filter.rule === undefined || a.ruleId === filter.rule) &&
           (filter.resolved !== false || a.status !== 'RESOLVED') &&
           (needle === undefined ||
             a.reportId.toLowerCase().includes(needle) ||
@@ -218,19 +224,34 @@ export class AlertEngine {
         // Resolved alerts always come last; within that, the chosen ranking.
         const resolved = Number(a.status === 'RESOLVED') - Number(b.status === 'RESOLVED');
         const bySeverity = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
+        const byStatus = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        if (filter.sort === 'report') {
+          return (
+            resolved ||
+            a.reportId.localeCompare(b.reportId) ||
+            bySeverity ||
+            RULE_ORDER[a.ruleId] - RULE_ORDER[b.ruleId] ||
+            b.openedTick - a.openedTick ||
+            a.id.localeCompare(b.id)
+          );
+        }
         if (filter.sort === 'snapshot') {
           return (
             resolved ||
             b.openedTick - a.openedTick ||
             bySeverity ||
-            STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+            byStatus ||
             a.id.localeCompare(b.id)
           );
         }
+        // Within a severity: refresh failures (longest failing run first), then load time
+        // (highest peak first), so the worst report of each kind leads.
         return (
           resolved ||
           bySeverity ||
-          STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
+          RULE_ORDER[a.ruleId] - RULE_ORDER[b.ruleId] ||
+          (a.ruleId === 'LATENCY' ? b.value - a.value : b.streak - a.streak) ||
+          byStatus ||
           b.lastSeenTick - a.lastSeenTick ||
           a.id.localeCompare(b.id)
         );

@@ -2736,7 +2736,7 @@ paths:
       description: |-
         Roles: admin, owner, viewer.
 
-        Resolved last; the rest most severe first (OPEN before ACKNOWLEDGED, then most recently seen), or with sort=snapshot by the snapshot they opened at, newest first. Owners see alerts for reports they currently own; admins and viewers see all. Alerts are kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to snapshot 0.
+        Resolved last; the rest most severe first (within a severity, refresh failures by longest failing run, then load-time alerts by highest peak load time), or with sort=report by report id, or with sort=snapshot by the snapshot they opened at, newest first. `rule` narrows to one alert type. Owners see alerts for reports they currently own; admins and viewers see all. Alerts are kept in memory and rebuilt from the snapshots, so they reset when the replay wraps to snapshot 0.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2789,12 +2789,20 @@ paths:
           name: q
           in: query
         - schema:
+            allOf:
+              - $ref: "#/components/schemas/AlertRuleId"
+              - description: Only alerts of this type (LATENCY, REFRESH_FAILED, REFRESH_UNKNOWN)
+          required: false
+          name: rule
+          in: query
+        - schema:
             type: string
             enum:
               - severity
+              - report
               - snapshot
             default: severity
-            description: "severity (default): most severe first. snapshot: most recently opened snapshot first. Resolved alerts come last either way."
+            description: "severity (default): most severe first; within a severity, refresh failures by longest failing run, then load-time alerts by highest peak load time. report: by report id ascending. snapshot: most recently opened snapshot first. Resolved alerts come last in every order."
           required: false
           name: sort
           in: query

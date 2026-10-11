@@ -75,6 +75,35 @@ describe('alerts API', () => {
       expect((await admin.get('/api/v1/alerts?sort=bogus')).status).toBe(400);
     });
 
+    it('severity sort ranks refresh failures by run length, then load time by peak, per severity', async () => {
+      const rank = { INFO: 0, WARNING: 1, CRITICAL: 2 };
+      const ruleRank = { REFRESH_FAILED: 0, LATENCY: 1, REFRESH_UNKNOWN: 2 };
+      const active = (await alertsAs(admin)).filter((a) => a.status !== 'RESOLVED');
+      for (let i = 1; i < active.length; i++) {
+        const [p, c] = [active[i - 1]!, active[i]!];
+        if (p.severity !== c.severity) continue;
+        expect(ruleRank[p.ruleId]).toBeLessThanOrEqual(ruleRank[c.ruleId]);
+        if (p.ruleId !== c.ruleId) continue;
+        if (c.ruleId === 'LATENCY') expect(p.value).toBeGreaterThanOrEqual(c.value);
+        else expect(p.streak).toBeGreaterThanOrEqual(c.streak);
+      }
+      expect(active.map((a) => rank[a.severity])).toEqual(
+        active.map((a) => rank[a.severity]).sort((x, y) => y - x),
+      );
+    });
+
+    it('sort=report orders by report id; rule= keeps one alert type', async () => {
+      const live = (await alertsAs(admin, '&sort=report')).filter((a) => a.status !== 'RESOLVED');
+      const ids = live.map((a) => a.reportId);
+      expect(ids).toEqual([...ids].sort());
+      for (const rule of ['LATENCY', 'REFRESH_FAILED', 'REFRESH_UNKNOWN'] as const) {
+        const only = await alertsAs(admin, `&rule=${rule}`);
+        expect(only.length).toBeGreaterThan(0);
+        expect(only.every((a) => a.ruleId === rule)).toBe(true);
+      }
+      expect((await admin.get('/api/v1/alerts?rule=bogus')).status).toBe(400);
+    });
+
     it('filters by status and severity; overview counts match the active list', async () => {
       const open = await alertsAs(admin, '&status=OPEN');
       expect(open.every((a) => a.status === 'OPEN')).toBe(true);

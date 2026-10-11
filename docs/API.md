@@ -271,9 +271,12 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
 - **Live updates:** every change (opened, escalated, acknowledged, resolved) is pushed over
   Socket.IO, scoped like the REST responses. See [WEBSOCKET.md](WEBSOCKET.md).
 
-- `GET /alerts?status=&severity=&resolved=&q=&sort=&page=&pageSize=` lists the current cycle's
-  alerts, resolved last and the rest most severe first (OPEN before ACKNOWLEDGED, then most
-  recently seen). `sort=snapshot` orders by the snapshot an alert opened at, newest first. `severity` takes one value or a comma
+- `GET /alerts?status=&severity=&rule=&resolved=&q=&sort=&page=&pageSize=` lists the current
+  cycle's alerts, resolved last. The default `sort=severity` puts the most severe first; within a
+  severity, refresh failures come first (longest failing run first), then load-time alerts
+  (highest peak load time first). `sort=report` orders by report id (RPT_200, RPT_201, …).
+  `sort=snapshot` orders by the snapshot an alert opened at, newest first. `rule` keeps one alert
+  type (`LATENCY`, `REFRESH_FAILED`, `REFRESH_UNKNOWN`). `severity` takes one value or a comma
   separated list (`severity=CRITICAL,WARNING`); the UI's default filter is Critical + Warning.
   `resolved=false` leaves out RESOLVED alerts (the default includes them; the UI sends it unless
   "Show resolved" is on). `q` is a case-insensitive substring of the report id or name.

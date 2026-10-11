@@ -55,8 +55,12 @@ export interface ReplayState {
   tickMs: number;
 }
 
-/** GET /alerts ordering: most severe first (default), or most recently opened snapshot first. */
-export type AlertSort = 'severity' | 'snapshot';
+/**
+ * GET /alerts ordering. severity (default): most severe first, then the worst of each kind
+ * (highest peak load time, longest failing refresh run). report: by report id (RPT_200, 201, …).
+ * snapshot: most recently opened snapshot first.
+ */
+export type AlertSort = 'severity' | 'report' | 'snapshot';
 
 export type ReplayCommand =
   | { action: 'pause' }

@@ -211,13 +211,18 @@ export const alertsQuerySchema = pageQuerySchema.extend({
     .max(100)
     .optional()
     .openapi({ description: 'Case-insensitive substring of the report id or name' }),
+  rule: alertRuleIdSchema
+    .optional()
+    .openapi({ description: 'Only alerts of this type (LATENCY, REFRESH_FAILED, REFRESH_UNKNOWN)' }),
   sort: z
-    .enum(['severity', 'snapshot'])
+    .enum(['severity', 'report', 'snapshot'])
     .default('severity')
     .openapi({
       description:
-        'severity (default): most severe first. snapshot: most recently opened snapshot first. ' +
-        'Resolved alerts come last either way.',
+        'severity (default): most severe first; within a severity, refresh failures by longest ' +
+        'failing run, then load-time alerts by highest peak load time. report: by report id ' +
+        'ascending. snapshot: most recently opened snapshot first. Resolved alerts come last ' +
+        'in every order.',
     }),
 });
 
