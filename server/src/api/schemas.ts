@@ -162,6 +162,10 @@ export const alertSchema = z
     openedTick: z.number().int(),
     openedAt: z.string().datetime().openapi({ description: 'Replay (virtual) time of openedTick' }),
     lastSeenTick: z.number().int(),
+    streak: z.number().int().min(1).openapi({
+      description:
+        'Consecutive snapshots, ending at lastSeenTick, on which the report broke this rule',
+    }),
     ackedBy: z.string().optional(),
     resolvedTick: z.number().int().optional(),
     synthetic: z.boolean().openapi({ description: 'Opened by an injected incident' }),

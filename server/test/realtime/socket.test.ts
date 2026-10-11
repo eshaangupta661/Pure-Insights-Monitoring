@@ -298,6 +298,8 @@ describe('broadcasts are scoped by room', () => {
     expect(payloads<Alert>(admin, 'alert:opened').find((a) => a.id === mineId)).toMatchObject({
       synthetic: true,
       ownerEmail: OWNER,
+      severity: 'CRITICAL',
+      streak: expect.any(Number), // > 1 if the report also broke the rule during a cooldown
     });
   });
 
@@ -325,6 +327,28 @@ describe('broadcasts are scoped by room', () => {
     expect(payloads<OverviewKpis>(admin, 'kpi:update').at(-1)?.reportCount).toBeGreaterThan(
       ownerOverview.body.reportCount,
     );
+  });
+
+  it('every WARNING latency alert and every refresh failure that opens on a tick is pushed', async () => {
+    const opened = (r: Recorded) => new Set(payloads<Alert>(r, 'alert:opened').map((a) => a.id));
+    const before = opened(admin);
+    t.clock.advance(config.TICK_MS);
+    await t.deps.realtime.sync();
+    const tick = START_TICK + 2;
+    await vi.waitFor(() => expect(payloads<TickEvent>(admin, 'tick').at(-1)?.tick).toBe(tick));
+    const expected = t.deps.alerts
+      .list({ kind: 'all' })
+      .filter((a) => a.openedTick === tick && a.ruleId !== 'REFRESH_UNKNOWN');
+    // the data guarantees both kinds open somewhere in a 20-snapshot replay; at least one here
+    expect(expected.length).toBeGreaterThan(0);
+    const got = opened(admin);
+    for (const a of expected) {
+      expect(before.has(a.id)).toBe(false);
+      expect(got.has(a.id)).toBe(true);
+    }
+    for (const a of payloads<Alert>(admin, 'alert:opened')) {
+      expect(a.streak).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it('alert:ack over the socket: role, scope and payload checks', async () => {
@@ -443,7 +467,8 @@ describe('broadcasts are scoped by room', () => {
   it('a new replay cycle replaces the list with a snapshot instead of N alert:opened', async () => {
     const opened = payloads(admin, 'alert:opened').length;
     const snapshots = payloads(admin, 'alert:snapshot').length;
-    t.clock.advance((config.SNAPSHOT_COUNT - START_TICK) * config.TICK_MS); // → tick 1, next cycle
+    // earlier tests moved to START_TICK + 2
+    t.clock.advance((config.SNAPSHOT_COUNT - START_TICK - 1) * config.TICK_MS); // → tick 1, next cycle
     await t.deps.realtime.sync();
     await vi.waitFor(() => expect(payloads(admin, 'alert:snapshot').length).toBe(snapshots + 1));
     expect(payloads(admin, 'alert:opened').length).toBe(opened);

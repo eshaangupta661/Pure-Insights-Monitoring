@@ -1330,6 +1330,10 @@ components:
           description: Replay (virtual) time of openedTick
         lastSeenTick:
           type: integer
+        streak:
+          type: integer
+          minimum: 1
+          description: Consecutive snapshots, ending at lastSeenTick, on which the report broke this rule
         ackedBy:
           type: string
         resolvedTick:
@@ -1351,6 +1355,7 @@ components:
         - openedTick
         - openedAt
         - lastSeenTick
+        - streak
         - synthetic
     BulkAckResult:
       type: object

@@ -31,7 +31,16 @@ import {
 } from '../api/queries';
 import { ApiRequestError, api } from '../api/http';
 import { useAuth } from '../auth/AuthProvider';
-import { useToast } from '../toast/ToastProvider';
+import {
+  POPUP_QUEUE_LIMIT,
+  deliveryFor,
+  notificationKey,
+  pushNotification,
+  readMuted,
+  unreadCount,
+  writeMuted,
+  type Notification,
+} from '../lib/notifications';
 
 /** `connecting` = first attempt; `reconnecting` = lost the link, backing off; `offline` = gave up. */
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
@@ -44,14 +53,21 @@ interface AlertsState {
   alerts: Alert[];
   /** Acknowledge over the socket; rejects with the server's error message. */
   ack: (alertId: string) => Promise<Alert>;
+  /** The bell: WARNING/CRITICAL alerts that opened or escalated live, newest first. */
+  notifications: Notification[];
+  unread: number;
+  markAllRead: () => void;
+  /** CRITICAL pop-ups waiting to be shown; the first is on screen. */
+  popups: Alert[];
+  dismissPopup: (alertId: string) => void;
+  mutePopups: boolean;
+  setMutePopups: (muted: boolean) => void;
 }
 
 type AlertsSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const AlertsContext = createContext<AlertsState | null>(null);
 
-/** Critical alerts arriving within this window share one toast. */
-const TOAST_BATCH_MS = 400;
 const REFRESH_DEBOUNCE_MS = 300;
 
 const SEVERITY_RANK = { CRITICAL: 0, WARNING: 1, INFO: 2 } as const;
@@ -84,11 +100,14 @@ async function fetchActiveAlerts(): Promise<Alert[]> {
  */
 export function AlertsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const toast = useToast();
   const { logout } = useAuth();
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [tick, setTick] = useState<TickEvent | null>(null);
   const [byId, setById] = useState<ReadonlyMap<string, Alert>>(new Map());
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [popups, setPopups] = useState<Alert[]>([]);
+  const [mutePopups, setMuteState] = useState(readMuted);
+  const mutedRef = useRef(mutePopups);
   const socketRef = useRef<AlertsSocket | null>(null);
 
   useEffect(() => {
@@ -104,35 +123,20 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     let hasConnected = false;
     /** Bumped by every alert event, so a slower REST re-sync never overwrites newer socket data. */
     let version = 0;
-    /** `${id}:${severity}` already toasted, so reconnect snapshots and updates don't repeat. */
-    const toasted = new Set<string>();
-
-    // A tick can open dozens of alerts at once; criticals arriving together become one toast.
-    let pendingCritical: Alert[] = [];
-    let flushTimer: ReturnType<typeof setTimeout> | undefined;
-    const flushToasts = () => {
-      const batch = pendingCritical;
-      pendingCritical = [];
-      const [first] = batch;
-      if (!first) return;
-      if (batch.length === 1) {
-        toast({ title: `Critical: ${first.reportName}`, body: first.message, to: '/alerts' });
-      } else {
-        toast({
-          title: `${batch.length} new critical alerts`,
-          body: `${first.reportName}: ${first.message}, and ${batch.length - 1} more`,
-          to: '/alerts',
-        });
+    /** Notification keys already delivered, so reconnect snapshots and updates don't repeat. */
+    const seen = new Set<string>();
+    const notify = (alert: Alert) => {
+      const delivery = deliveryFor(alert, seen);
+      if (!delivery) return;
+      seen.add(notificationKey(alert));
+      setNotifications((list) => pushNotification(list, alert));
+      if (delivery === 'bell+popup' && !mutedRef.current) {
+        setPopups((queue) =>
+          queue.length >= POPUP_QUEUE_LIMIT
+            ? queue
+            : [...queue.filter((a) => a.id !== alert.id), alert],
+        );
       }
-    };
-    const maybeToast = (alert: Alert) => {
-      const key = `${alert.id}:${alert.severity}`;
-      if (alert.severity !== 'CRITICAL' || alert.status !== 'OPEN' || toasted.has(key)) return;
-      toasted.add(key);
-      pendingCritical.push(alert);
-      clearTimeout(flushTimer);
-      clearTimeout(refreshTimer);
-      flushTimer = setTimeout(flushToasts, TOAST_BATCH_MS);
     };
     // Pages that list alerts or reports over REST refetch shortly after the live state changes.
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -151,24 +155,24 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
-    // Alerts already active when the socket (re)connects are not news: remember, don't toast.
+    // Alerts already active when the socket (re)connects are not news: remember, don't notify.
     socket.on('alert:snapshot', (alerts) => {
       version++;
       refreshLists();
-      for (const a of alerts) toasted.add(`${a.id}:${a.severity}`);
+      for (const a of alerts) seen.add(notificationKey(a));
       setById(new Map(alerts.map((a) => [a.id, a])));
     });
     socket.on('alert:opened', (alert) => {
       version++;
       refreshLists();
       upsert(alert);
-      maybeToast(alert);
+      notify(alert);
     });
     socket.on('alert:updated', (alert) => {
       version++;
       refreshLists();
       upsert(alert);
-      maybeToast(alert); // an escalation to CRITICAL is news
+      notify(alert); // an escalation to CRITICAL is news; acks and resolutions are not
     });
     socket.on('tick', (event) => {
       setTick(event);
@@ -219,13 +223,12 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     socket.io.on('reconnect_failed', () => setStatus('offline'));
 
     return () => {
-      clearTimeout(flushTimer);
       clearTimeout(refreshTimer);
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [queryClient, toast, logout]);
+  }, [queryClient, logout]);
 
   const ack = useCallback(
     (alertId: string) =>
@@ -243,8 +246,61 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const markAllRead = useCallback(
+    () => setNotifications((list) => list.map((n) => (n.read ? n : { ...n, read: true }))),
+    [],
+  );
+  const dismissPopup = useCallback(
+    (alertId: string) => setPopups((queue) => queue.filter((a) => a.id !== alertId)),
+    [],
+  );
+  const setMutePopups = useCallback((muted: boolean) => {
+    mutedRef.current = muted;
+    setMuteState(muted);
+    writeMuted(muted);
+    if (muted) setPopups([]);
+  }, []);
+
   const alerts = useMemo(() => sortAlerts(byId.values()), [byId]);
-  const value = useMemo(() => ({ status, tick, alerts, ack }), [status, tick, alerts, ack]);
+  // Pop-ups and bell rows keep the severity and value they were raised with, but follow the
+  // alert's live status and owner (an ack elsewhere hides the Acknowledge button).
+  const live = useCallback(
+    (a: Alert): Alert => {
+      const current = byId.get(a.id);
+      return current
+        ? { ...a, status: current.status, ackedBy: current.ackedBy, ownerEmail: current.ownerEmail }
+        : a;
+    },
+    [byId],
+  );
+  const value = useMemo(
+    () => ({
+      status,
+      tick,
+      alerts,
+      ack,
+      notifications: notifications.map((n) => ({ ...n, alert: live(n.alert) })),
+      unread: unreadCount(notifications),
+      markAllRead,
+      popups: popups.map(live),
+      dismissPopup,
+      mutePopups,
+      setMutePopups,
+    }),
+    [
+      status,
+      tick,
+      alerts,
+      ack,
+      notifications,
+      markAllRead,
+      popups,
+      live,
+      dismissPopup,
+      mutePopups,
+      setMutePopups,
+    ],
+  );
   return <AlertsContext.Provider value={value}>{children}</AlertsContext.Provider>;
 }
 

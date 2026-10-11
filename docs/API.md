@@ -51,15 +51,15 @@ curl -b jar 'https://<host>/api/v1/reports?pageSize=5'
 
 ## Roles and access
 
-| endpoint                                                                               | admin |    owner    |       viewer        | anonymous |
-| -------------------------------------------------------------------------------------- | :---: | :---------: | :-----------------: | :-------: |
-| `POST /auth/login`, `POST /auth/logout`                                                |   ✓   |      ✓      |          ✓          |     ✓     |
-| `GET /auth/me`, `/overview`, `/overview/trend`, `/reports`, `/reports/:id`, `/data-quality`, `/alerts`    |   ✓   | own reports | ✓ (no per-report $) |    401    |
-| `GET /costs/reports`, `/costs/unit-economics`, `/costs/anomalies`, `/costs/chargeback` |   ✓   | own reports |   aggregates only   |    401    |
-| `GET /costs/chargeback?view=point_in_time`                                             |   ✓   |     403     |   aggregates only   |    401    |
-| `PATCH /reports/:id/owner`                                                             |   ✓   |     403     |         403         |    401    |
-| `POST /alerts/:id/ack`, `POST /alerts/ack` (bulk)                                      |   ✓   | own alerts  |         403         |    401    |
-| `GET/POST /admin/replay`, `POST /admin/incidents`, `GET /admin/audit-log`              |   ✓   |     403     |         403         |    401    |
+| endpoint                                                                                               | admin |    owner    |       viewer        | anonymous |
+| ------------------------------------------------------------------------------------------------------ | :---: | :---------: | :-----------------: | :-------: |
+| `POST /auth/login`, `POST /auth/logout`                                                                |   ✓   |      ✓      |          ✓          |     ✓     |
+| `GET /auth/me`, `/overview`, `/overview/trend`, `/reports`, `/reports/:id`, `/data-quality`, `/alerts` |   ✓   | own reports | ✓ (no per-report $) |    401    |
+| `GET /costs/reports`, `/costs/unit-economics`, `/costs/anomalies`, `/costs/chargeback`                 |   ✓   | own reports |   aggregates only   |    401    |
+| `GET /costs/chargeback?view=point_in_time`                                                             |   ✓   |     403     |   aggregates only   |    401    |
+| `PATCH /reports/:id/owner`                                                                             |   ✓   |     403     |         403         |    401    |
+| `POST /alerts/:id/ack`, `POST /alerts/ack` (bulk)                                                      |   ✓   | own alerts  |         403         |    401    |
+| `GET/POST /admin/replay`, `POST /admin/incidents`, `GET /admin/audit-log`                              |   ✓   |     403     |         403         |    401    |
 
 `test/api/access-matrix.test.ts` checks every endpoint × {anonymous, viewer, owner, admin}
 against this table, written out independently of the code. A route missing from the table also
@@ -211,10 +211,10 @@ the live views, so overrides show up immediately. They are also the slowest call
 **Orphaned vs. zombie** (`/sql/06`). Two separate problems with different fixes, both at the
 replay's current snapshot (`snapshotIdx`):
 
-| section    | a report is listed when                                                 | recommended action | savings                                        |
-| ---------- | ----------------------------------------------------------------------- | ------------------ | ---------------------------------------------- |
-| `orphaned` | it has no owner at that snapshot (an override wins), whatever its usage | reassign           | none: reassigning doesn't stop spend           |
-| `zombies`  | its views are below `COST_LOW_VIEWS` (50), owned or not                 | retire             | that snapshot's Snowflake cost × 30 days       |
+| section    | a report is listed when                                                 | recommended action | savings                                  |
+| ---------- | ----------------------------------------------------------------------- | ------------------ | ---------------------------------------- |
+| `orphaned` | it has no owner at that snapshot (an override wins), whatever its usage | reassign           | none: reassigning doesn't stop spend     |
+| `zombies`  | its views are below `COST_LOW_VIEWS` (50), owned or not                 | retire             | that snapshot's Snowflake cost × 30 days |
 
 A report can be in both (`orphaned[].isZombie`, `zombies[].isOrphaned`). Estimated savings come
 only from zombies; a zombie whose credits were quarantined (DQ02) has `null` savings (unknown,
@@ -302,6 +302,7 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
   "openedTick": 0,
   "openedAt": "2026-10-10T18:26:40.000Z",
   "lastSeenTick": 8,
+  "streak": 2,
   "synthetic": false
 }
 ```

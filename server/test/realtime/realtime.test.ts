@@ -162,6 +162,20 @@ describe('AlertStore lifecycle', () => {
     expect(events[2]!.updated).toEqual([]);
   });
 
+  it('streak counts consecutive breaching ticks ending at lastSeenTick (a healthy tick resets it)', () => {
+    const { latency, events } = run([slow(20), slow(21), slow(40), healthy, slow(20)]);
+    expect(events[0]!.opened[0]).toMatchObject({ streak: 1 });
+    // the escalation event carries the streak at that tick: the 3rd snapshot in a row
+    expect(events[2]!.updated[0]).toMatchObject({ severity: 'CRITICAL', streak: 3 });
+    expect(latency()[0]).toMatchObject({ lastSeenTick: 4, streak: 1 });
+  });
+
+  it('streak includes breaches during the cooldown, so a reopened alert is not "first"', () => {
+    // resolves at t=2; t=3 and t=4 breach in cooldown; t=5 reopens with streak 3
+    const { latency } = run([slow(20), healthy, healthy, slow(20), slow(20), slow(20)]);
+    expect(latency().at(-1)).toMatchObject({ openedTick: 5, streak: 3 });
+  });
+
   it(`auto-resolves after ${config.ALERT_AUTO_RESOLVE_TICKS} consecutive healthy ticks, not 1`, () => {
     const { latency, events } = run([slow(20), healthy, slow(20), healthy, healthy]);
     expect(latency()).toHaveLength(1); // the blip at t=2 reset the streak, no new alert

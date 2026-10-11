@@ -11,6 +11,8 @@
  *   opening another.
  * - Severity only escalates (WARNING → CRITICAL emits an update); a milder reading keeps it.
  *   An acknowledged alert stays ACKNOWLEDGED when it escalates.
+ * - `streak` counts the consecutive ticks, ending at lastSeenTick, on which the key's rule fired
+ *   (whether or not an alert was active, so breaches during a cooldown count too).
  * - After RESOLVED, the key can't reopen for ALERT_COOLDOWN_TICKS ticks. Injected incidents
  *   (synthetic readings) bypass the cooldown so a demo always produces an alert.
  *
@@ -38,6 +40,8 @@ export class AlertStore {
   private readonly active = new Map<string, string>();
   /** key → consecutive healthy ticks while active. */
   private readonly healthyStreak = new Map<string, number>();
+  /** key → consecutive ticks violated, up to the last applied tick (0 = healthy). */
+  private readonly breachStreak = new Map<string, number>();
   /** key → tick its last alert resolved. */
   private readonly resolvedAt = new Map<string, number>();
 
@@ -53,10 +57,13 @@ export class AlertStore {
         const violation = violations.get(ruleId);
         const activeId = this.active.get(key);
         const current = activeId === undefined ? undefined : this.alerts.get(activeId);
+        const streak = violation ? (this.breachStreak.get(key) ?? 0) + 1 : 0;
+        this.breachStreak.set(key, streak);
 
         if (violation && current) {
           this.healthyStreak.set(key, 0);
           current.lastSeenTick = tick;
+          current.streak = streak;
           const escalates = SEVERITY_RANK[violation.severity] > SEVERITY_RANK[current.severity];
           // value/message track the peak while active, so they always agree with each other
           // and with the severity's threshold. Only an escalation is worth an update event.
@@ -85,6 +92,7 @@ export class AlertStore {
             openedTick: tick,
             openedAt: new Date(ReplayClock.startOf({ tick, cycle: this.cycle })).toISOString(),
             lastSeenTick: tick,
+            streak,
             synthetic: reading.synthetic,
           };
           this.alerts.set(alert.id, alert);
@@ -92,9 +100,9 @@ export class AlertStore {
           this.healthyStreak.set(key, 0);
           events.opened.push({ ...alert });
         } else if (current) {
-          const streak = (this.healthyStreak.get(key) ?? 0) + 1;
-          this.healthyStreak.set(key, streak);
-          if (streak >= config.ALERT_AUTO_RESOLVE_TICKS) {
+          const healthy = (this.healthyStreak.get(key) ?? 0) + 1;
+          this.healthyStreak.set(key, healthy);
+          if (healthy >= config.ALERT_AUTO_RESOLVE_TICKS) {
             current.status = 'RESOLVED';
             current.resolvedTick = tick;
             this.active.delete(key);

@@ -25,6 +25,8 @@ export interface Alert {
   openedTick: number;
   openedAt: string;
   lastSeenTick: number;
+  /** Consecutive snapshots, ending at lastSeenTick, on which this report broke this rule (≥ 1). */
+  streak: number;
   ackedBy?: string;
   resolvedTick?: number;
   synthetic: boolean;

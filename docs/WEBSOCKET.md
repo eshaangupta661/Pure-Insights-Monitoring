@@ -87,9 +87,42 @@ Example `alert:opened`:
   "openedTick": 7,
   "openedAt": "2026-10-10T18:27:50.000Z",
   "lastSeenTick": 7,
+  "streak": 1,
   "synthetic": true
 }
 ```
+
+`streak` is the number of consecutive snapshots, ending at `lastSeenTick`, on which the report
+broke this rule. It counts breaches whether or not an alert was active, so an alert that reopens
+after a cooldown can start above 1. It moves every tick without an event (like `lastSeenTick`);
+the value in `alert:opened` / `alert:updated` is the streak at that moment.
+
+## Notifications in the client
+
+Every alert that opens or escalates live produces a notification. The server sends it as
+`alert:opened` (or `alert:updated` for WARNING → CRITICAL); the client decides where it goes
+(`client/src/lib/notifications.ts`, unit-tested in `server/test/ui/notifications.test.ts`):
+
+| alert                                                              | bell | pop-up card        |
+| ------------------------------------------------------------------ | ---- | ------------------ |
+| `LATENCY` WARNING (> 15 s)                                         | yes  | no                 |
+| `LATENCY` CRITICAL (> 30 s), `REFRESH_FAILED` (FAILED / TIMED_OUT) | yes  | yes (unless muted) |
+| `REFRESH_UNKNOWN` (INFO), acks, resolutions                        | no   | no                 |
+
+- One notification per alert id **and severity**: an escalation notifies again, an ack does not.
+  Alerts in an `alert:snapshot` (connect, reconnect, new cycle) are already active, so they are
+  not news and don't notify.
+- **Bell** (header): unread count, the 20 most recent notifications (severity, report, value vs
+  threshold, snapshot), "Mark all read", and a "Mute critical pop-ups" toggle stored in
+  `localStorage` (`pic.mutePopups`; falls back to unmuted when storage is unavailable).
+  Notifications live in memory for the session and start empty after a reload.
+- **Pop-up card**: one CRITICAL at a time with "+N more" for the queue. Shows severity, report
+  name and id, owner, value vs threshold and the streak ("3rd snapshot in a row"), with View
+  report and Acknowledge (admin, or the owner of the report; viewers never see the button).
+  Closes after 8 s; hovering or focusing pauses the countdown.
+- Dedup and cooldown still apply (see the lifecycle below): a report that stays slow has one
+  alert, so it notifies once (and again on escalation), not every tick. A breach during the
+  3-tick cooldown opens no alert and so does not notify; it does count toward the next streak.
 
 ## Client → server: `alert:ack`
 
