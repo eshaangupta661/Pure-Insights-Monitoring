@@ -13,6 +13,14 @@ real-time WebSocket alerts.
 > Free Render tier: the service sleeps when idle, so the first load may take ~1 min. The app
 > shows "Waking up the server..." until it responds.
 
+![](docs/assets/screenshot-1.jpg)
+
+![](docs/assets/screenshot-2.jpg)
+
+![](docs/assets/screenshot-3.jpg)
+
+![](docs/assets/screenshot-4.jpg)
+
 ## How the live simulation works
 
 The source data is a CSV of 100 dashboards captured over **20 daily snapshots** (2,000 rows). The
