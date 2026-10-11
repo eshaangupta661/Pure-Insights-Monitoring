@@ -38,42 +38,6 @@ or redeploy.
 | owner  | `user_3@company.com`     | `Owner@123`  | only reports they currently own; acknowledge their alerts; full cost for those reports          |
 | viewer | `viewer@pureinsights.dev` | `Viewer@123` | read-only; cost shown as portfolio aggregates only (no per-report dollars)                      |
 
-## Screenshots
-
-Captured from the live demo as admin. Figures change with the replay position.
-
-**Overview, Today view** (current snapshot):
-
-![Overview, Today view](docs/assets/overview-today.jpg)
-
-**Overview, Period view** (period to date, snapshots 1 to the current one):
-
-![Overview, Period view](docs/assets/overview-period.jpg)
-
-**Real-time CRITICAL alert pop-up** (acknowledge, view report or mute):
-
-![Critical alert pop-up](docs/assets/popup.jpg)
-
-**Alerts** (severity filters, grouping, bulk acknowledge):
-
-![Alerts page](docs/assets/alerts.jpg)
-
-**Reports:**
-
-![Reports page](docs/assets/reports.jpg)
-
-**Cost Attribution** (Snowflake and AWS cost, forecast with 95% band):
-
-![Cost Attribution](docs/assets/cost-attribution.jpg)
-
-**Orphaned and zombie reports** (cost attribution):
-
-![Orphaned and zombie reports](docs/assets/cost-orphaned-zombie.jpg)
-
-**Data Quality** (rule results, severity and treatment):
-
-![Data Quality](docs/assets/data-quality.jpg)
-
 ## Evaluator's guide
 
 | rubric item | where to look | what to try in 30 seconds |
