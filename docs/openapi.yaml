@@ -848,6 +848,9 @@ components:
             latestSnowflakeCostUsd:
               type: number
               description: USD, unrounded
+            estimatedMonthlySavingsUsd:
+              type: number
+              description: USD, unrounded
             totalAttributedCredits:
               type: number
             totalAttributedCostUsd:
@@ -856,6 +859,7 @@ components:
           required:
             - latestAttributedCredits
             - latestSnowflakeCostUsd
+            - estimatedMonthlySavingsUsd
             - totalAttributedCredits
             - totalAttributedCostUsd
     ViewerAwsViewsMismatch:

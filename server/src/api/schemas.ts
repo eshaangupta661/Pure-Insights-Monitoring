@@ -587,6 +587,7 @@ export const zombieReportSchema = viewerZombieReportSchema
   .extend({
     latestAttributedCredits: z.number(),
     latestSnowflakeCostUsd: usd,
+    estimatedMonthlySavingsUsd: usd,
     totalAttributedCredits: z.number(),
     totalAttributedCostUsd: usd,
   })

@@ -7,6 +7,7 @@ import type {
 } from '@pic/shared';
 import type { Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { config } from '../../src/config.js';
 import { buildTestApp, type TestApp } from '../helpers/app.js';
 import { loginAs } from '../helpers/auth.js';
 
@@ -113,6 +114,12 @@ describe('costs API', () => {
       expect(a.quarantinedSnapshots.every((q) => q.rawCredits < 0)).toBe(true);
       const orphanZombies = a.zombies.filter((z) => z.reason !== 'LOW_USAGE');
       expect(orphanZombies.every((z) => z.currentOwner === null)).toBe(true);
+      for (const z of a.zombies) {
+        expect(z.estimatedMonthlySavingsUsd).toBeCloseTo(
+          z.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
+          9,
+        );
+      }
     });
   });
 

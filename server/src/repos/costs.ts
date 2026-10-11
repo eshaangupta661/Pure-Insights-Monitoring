@@ -26,6 +26,7 @@ import type {
   ZombieReport,
 } from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
+import { config } from '../config.js';
 import type { Queryable } from '../data/warehouse.js';
 import { paginate, type PageQuery } from '../http/pagination.js';
 import { RESULTS_SCHEMA } from '../sql/runner.js';
@@ -159,7 +160,7 @@ export async function getAnomalies(
 
   // Live view: membership depends on the current owner (an orphaned report is a zombie).
   const z = scoped('z.current_owner');
-  const zombies = await db.query<ZombieReport>(
+  const zombieRows = await db.query<Omit<ZombieReport, 'estimatedMonthlySavingsUsd'>>(
     `SELECT z.report_id AS "reportId", z.report_name AS "reportName", z.current_owner AS "currentOwner",
             z.latest_snapshot_idx AS "latestSnapshotIdx", z.latest_views AS "latestViews", z.reason,
             z.latest_attributed_credits AS "latestAttributedCredits",
@@ -171,6 +172,11 @@ export async function getAnomalies(
      ORDER BY ${by('z.total_attributed_credits DESC, z.report_id', 'z.report_id')}`,
     z.params,
   );
+
+  const zombies: ZombieReport[] = zombieRows.map((r) => ({
+    ...r,
+    estimatedMonthlySavingsUsd: r.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
+  }));
 
   const aws = scoped('o.current_owner');
   const awsViewsMismatch = await db.query<AwsViewsMismatch>(
