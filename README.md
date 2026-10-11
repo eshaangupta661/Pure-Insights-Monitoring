@@ -6,9 +6,9 @@ real-time WebSocket alerts.
 
 **Live demo:** https://pure-insights-command-center.onrender.com
 
-**Video walkthrough:** <VIDEO_URL>
+**Walkthrough** (all five pages, then filters, report detail, replay controls, incident injection and acknowledge):
 
-<GIF>
+![Pure Insights Command Center walkthrough](docs/assets/demo.gif)
 
 > Free Render tier: the service sleeps when idle, so the first load may take ~1 min. The app
 > shows "Waking up the server..." until it responds.
