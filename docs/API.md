@@ -151,13 +151,26 @@ snapshots.
 
 ### Reports and overview
 
-- `GET /overview` returns KPIs for the current snapshot over the caller's scope: refresh-status
-  counts, slow and critical-slow counts, average and max load time, views, active alert counts
-  by severity, and `totals` (attributed Snowflake cost over all snapshots, plus this snapshot's
-  Snowflake and AWS cost).
-- `GET /overview/trend` returns `points` (refresh-status counts and slow count for every
-  snapshot, over the caller's scope), `currentIdx` (the replay's snapshot) and `latency` (a
-  load-time histogram of the current snapshot; bucket edges are `LATENCY_BUCKET_EDGES_SEC`).
+- `GET /overview?scope=today|period` (default `today`). The response carries `scope`, so
+  clients can tell the two shapes apart (`OverviewResponse` in the spec).
+  - `today` returns KPIs for the replay's snapshot N over the caller's scope: refresh-status
+    counts, slow and critical-slow counts, average and max load time, views, active alert counts
+    by severity, and `totals` (attributed Snowflake cost over all snapshots, plus this
+    snapshot's Snowflake and AWS cost). This is also the `kpi:update` socket payload.
+  - `period` returns **period to date**, snapshots 0..N, from `/sql/09_period_to_date.sql`:
+    `refresh` counts and `refreshCount` (one refresh per report snapshot), `refreshSuccessRate`
+    (SUCCESS ÷ all refreshes; UNKNOWN counts as not successful, as on `today`),
+    `everOrphanedCount` (reports with no owner at one or more snapshots, an override winning),
+    `avgLoadTimeSec` and `p95LoadTimeSec` (over every report snapshot; p95 is
+    `PERCENTILE_CONT(0.95)`), `quarantinedSnapshotCount`, and `totals.snowflakeCostToDateUsd`:
+    attributed Snowflake cost over the period's days. Quarantined snapshots (unknown cost) and
+    AWS hosting (a monthly bill, which summing per day would count once per day) are left out
+    of cost to date. Owners get their own reports' figures, filtered in SQL; at N = 19 cost to
+    date equals the attributed cost of every report (check P1).
+- `GET /overview/trend?scope=today|period` returns `scope`, `points` (refresh-status counts and
+  slow count for every snapshot, over the caller's scope), `currentIdx` (the replay's snapshot)
+  and `latency`: a load-time histogram of snapshot N (`today`) or of every report snapshot in
+  0..N (`period`); bucket edges are `LATENCY_BUCKET_EDGES_SEC`.
 - `GET /reports?q=&status=&orphaned=&slow=&sort=&order=&page=&pageSize=`
   - `q`: substring of id, name, owner at this snapshot, or override owner.
   - `status`: `SUCCESS | FAILED | TIMED_OUT | UNKNOWN`.

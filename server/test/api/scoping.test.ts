@@ -114,6 +114,26 @@ describe('owner scoping (user_3, who owns 11 reports)', () => {
     expect(k.totals.attributedCostUsd).toBeCloseTo(sum, 6);
   });
 
+  it('GET /overview?scope=period covers only their reports, filtered in SQL', async () => {
+    const p = (await owner.get('/api/v1/overview?scope=period')).body;
+    expect(p).toMatchObject({ scope: 'period', reportCount: 11, refreshCount: 11 * 20 });
+    const [mineCost] = await t.sql<{ usd: number }>(
+      `SELECT SUM(attributed_cost_usd) AS usd FROM REPORT_ATTRIBUTION
+       WHERE report_id IN (${mine.map((id) => `'${id}'`).join(',')})`,
+    );
+    expect(p.totals.snowflakeCostToDateUsd).toBeCloseTo(mineCost!.usd, 6);
+    const all = (
+      await t.sql<{ n: number }>(
+        `SELECT COUNT(DISTINCT report_id)::INTEGER AS n FROM REPORT_SNAPSHOTS WHERE owner_email IS NULL
+       AND report_id IN (${mine.map((id) => `'${id}'`).join(',')})`,
+      )
+    )[0]!.n;
+    expect(p.everOrphanedCount).toBe(all);
+
+    const trend = (await owner.get('/api/v1/overview/trend?scope=period')).body;
+    expect(trend.latency.reduce((a: number, b: { count: number }) => a + b.count, 0)).toBe(220);
+  });
+
   it('GET /overview/trend counts only their reports', async () => {
     const t = (await owner.get('/api/v1/overview/trend')).body;
     const total = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0);

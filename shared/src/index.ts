@@ -138,8 +138,12 @@ export interface OverviewCostTotals {
   snapshotAwsCostUsd: number;
 }
 
-/** GET /overview: the replay's current snapshot, scoped to the caller. */
+/** `?scope=` on /overview and /overview/trend: the replay's snapshot N, or snapshots 0..N. */
+export type OverviewScope = 'today' | 'period';
+
+/** GET /overview (scope=today, the default): the replay's current snapshot, scoped to the caller. */
 export interface OverviewKpis {
+  scope: 'today';
   tick: number;
   snapshotIdx: number;
   snapshotDate: string;
@@ -155,6 +159,45 @@ export interface OverviewKpis {
   alerts: ActiveAlertCounts;
   totals: OverviewCostTotals;
 }
+
+/**
+ * GET /overview?scope=period: snapshots 0..N (N = the replay's snapshot), over the caller's scope.
+ * Figures come from /sql/09_period_to_date.sql.
+ */
+export interface PeriodOverview {
+  scope: 'period';
+  tick: number;
+  /** N, the last snapshot in the period. */
+  snapshotIdx: number;
+  /** Dates of snapshot 0 and snapshot N. */
+  fromDate: string;
+  toDate: string;
+  /** N + 1. */
+  snapshotCount: number;
+  reportCount: number;
+  /** Refresh outcomes summed over every report snapshot in the period. */
+  refresh: RefreshCounts;
+  /** Report snapshots in the period (one refresh each). */
+  refreshCount: number;
+  /** refresh.SUCCESS / refreshCount; UNKNOWN counts as not successful. null with no reports. */
+  refreshSuccessRate: number | null;
+  /** Reports with no owner at one or more snapshots of the period (an override wins). */
+  everOrphanedCount: number;
+  /** Snapshots whose Snowflake credits were quarantined (DQ02): unknown cost, not in totals. */
+  quarantinedSnapshotCount: number;
+  avgLoadTimeSec: number | null;
+  /** 95th percentile (linear interpolation) over every report snapshot in the period. */
+  p95LoadTimeSec: number | null;
+  totals: PeriodCostTotals;
+}
+
+/** Aggregates; visible to every role. */
+export interface PeriodCostTotals {
+  /** Attributed Snowflake cost over the period's days (AWS, a monthly bill, is not included). */
+  snowflakeCostToDateUsd: number;
+}
+
+export type OverviewResponse = OverviewKpis | PeriodOverview;
 
 /** One snapshot's refresh-status counts over the reports in scope (GET /overview/trend). */
 export interface TrendPoint {
@@ -177,6 +220,8 @@ export interface LatencyBucket {
  * replay's current snapshot (bucket edges from LATENCY_BUCKET_EDGES_SEC), over the caller's scope.
  */
 export interface OverviewTrend {
+  /** today: `latency` covers snapshot N only; period: snapshots 0..N. */
+  scope: OverviewScope;
   /** The replay's current snapshot; later points are what the replay has yet to reach. */
   currentIdx: number;
   points: TrendPoint[];

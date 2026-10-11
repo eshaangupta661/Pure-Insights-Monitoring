@@ -19,6 +19,8 @@ import type {
   ViewerAnomalyTotals,
   ViewerOrphanedReport,
   AuditAction,
+  OverviewResponse,
+  PeriodOverview,
   BulkAckRequest,
   BulkAckResult,
   AuditLogEntry,
@@ -275,8 +277,16 @@ assertTrue<AssertEqual<z.infer<typeof incidentBodySchema>, IncidentRequest>>();
 
 // ---- overview ---------------------------------------------------------------------------
 
+export const overviewQuerySchema = z.object({
+  scope: z
+    .enum(['today', 'period'])
+    .default('today')
+    .openapi({ description: 'today = the replay snapshot N; period = snapshots 0..N' }),
+});
+
 export const overviewSchema = z
   .object({
+    scope: z.literal('today'),
     tick: z.number().int(),
     snapshotIdx: z.number().int(),
     snapshotDate: isoDate,
@@ -305,6 +315,39 @@ export const overviewSchema = z
   .openapi('OverviewKpis');
 assertTrue<AssertEqual<z.infer<typeof overviewSchema>, OverviewKpis>>();
 
+export const periodOverviewSchema = z
+  .object({
+    scope: z.literal('period'),
+    tick: z.number().int(),
+    snapshotIdx: z.number().int(),
+    fromDate: isoDate,
+    toDate: isoDate,
+    snapshotCount: z.number().int(),
+    reportCount: z.number().int(),
+    refresh: z.object({
+      SUCCESS: z.number().int(),
+      FAILED: z.number().int(),
+      TIMED_OUT: z.number().int(),
+      UNKNOWN: z.number().int(),
+    }),
+    refreshCount: z.number().int(),
+    refreshSuccessRate: z.number().nullable(),
+    everOrphanedCount: z.number().int(),
+    quarantinedSnapshotCount: z.number().int(),
+    avgLoadTimeSec: z.number().nullable(),
+    p95LoadTimeSec: z.number().nullable(),
+    totals: z
+      .object({ snowflakeCostToDateUsd: usd })
+      .openapi('PeriodCostTotals', { description: 'Aggregates; visible to every role' }),
+  })
+  .openapi('PeriodOverview');
+assertTrue<AssertEqual<z.infer<typeof periodOverviewSchema>, PeriodOverview>>();
+
+export const overviewResponseSchema = z
+  .discriminatedUnion('scope', [overviewSchema, periodOverviewSchema])
+  .openapi('OverviewResponse');
+assertTrue<AssertEqual<z.infer<typeof overviewResponseSchema>, OverviewResponse>>();
+
 const refreshCountsSchema = z.object({
   SUCCESS: z.number().int(),
   FAILED: z.number().int(),
@@ -314,6 +357,7 @@ const refreshCountsSchema = z.object({
 
 export const overviewTrendSchema = z
   .object({
+    scope: z.enum(['today', 'period']),
     currentIdx: z.number().int(),
     points: z.array(
       z.object({

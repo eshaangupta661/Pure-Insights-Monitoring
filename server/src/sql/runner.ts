@@ -5,7 +5,7 @@
  * (about 1.2 s locally at threads=1, slower on Render's shared CPU), while loading the stored
  * results takes well under 100 ms and keeps the cold start predictable:
  *
- *   runSqlSuite(conn)     `npm run ingest`. Checks PARAMS against config, runs 02–08 (so the 03
+ *   runSqlSuite(conn)     `npm run ingest`. Checks PARAMS against config, runs 02–09 (so the 03
  *                         tables are rebuilt from the current ACCOUNT_USAGE data every time),
  *                         fails if any RECONCILIATION or DQ_CHECKS row is FAIL, then stores every
  *                         cached view as a table in schema SQL_RESULTS plus SUITE_FINGERPRINT.
@@ -41,6 +41,8 @@ export const SQL_SUITE: readonly { file: string; cache: readonly CachedView[] }[
   },
   { file: '07_owner_chargeback.sql', cache: ['OWNER_CHARGEBACK', 'OWNER_CHARGEBACK_CURRENT'] },
   { file: '08_reconciliation.sql', cache: ['RECONCILIATION'] },
+  // PERIOD_SNAPSHOT_ROWS (~21k rows) is on demand; the API reads PERIOD_TO_DATE live (owners).
+  { file: '09_period_to_date.sql', cache: ['PERIOD_TO_DATE', 'PERIOD_TO_DATE_CHECKS'] },
 ];
 
 /** 00 and 01 run at ingest before the data loads; they are part of the fingerprint too. */
@@ -49,7 +51,11 @@ export const RESULTS_SCHEMA = 'SQL_RESULTS';
 export const FINGERPRINT_TABLE = 'SUITE_FINGERPRINT';
 const CACHED_VIEWS: readonly CachedView[] = SQL_SUITE.flatMap((s) => s.cache);
 /** Stored first and verified before anything else is stored. */
-const VERIFIED_VIEWS: readonly CachedView[] = ['RECONCILIATION', 'DQ_CHECKS'];
+const VERIFIED_VIEWS: readonly CachedView[] = [
+  'RECONCILIATION',
+  'PERIOD_TO_DATE_CHECKS',
+  'DQ_CHECKS',
+];
 
 /** The suite could not run or its stored results can't be trusted (drift, stale, missing). */
 export class SqlSuiteError extends Error {
@@ -79,7 +85,7 @@ export function getSqlResults(): SqlResults {
 }
 
 export interface FingerprintInputs {
-  /** file name → SQL as executed (after translation), for every /sql file 00–08. */
+  /** file name → SQL as executed (after translation), for every /sql file 00–09. */
   sql: Readonly<Record<string, string>>;
   /** The PARAMS values (config.ts is their source of truth) plus the orphan markers. */
   params: Readonly<Record<string, unknown>>;
@@ -132,6 +138,7 @@ async function assertNoParamDrift(conn: DuckDBConnection): Promise<void> {
   }
 }
 
+/** `reconciliation` holds the rows of every PASS/FAIL check view: RECONCILIATION (08) and 09's. */
 function verificationFailures(
   reconciliation: readonly ReconciliationRow[],
   dqChecks: readonly DqCheckRow[],
@@ -178,7 +185,10 @@ export async function runSqlSuite(conn: DuckDBConnection): Promise<SqlResults> {
   );
   for (const view of VERIFIED_VIEWS) await storeView(conn, view);
   const failures = verificationFailures(
-    await readStored(conn, 'RECONCILIATION'),
+    [
+      ...(await readStored(conn, 'RECONCILIATION')),
+      ...(await readStored(conn, 'PERIOD_TO_DATE_CHECKS')),
+    ],
     await readStored(conn, 'DQ_CHECKS'),
   );
   if (failures.length > 0) {
@@ -232,7 +242,10 @@ export async function loadSqlResults(conn: DuckDBConnection): Promise<SqlResults
     // Each key gets the rows of its own view; TypeScript can't correlate K across the loop.
     (views as Record<CachedView, unknown[]>)[view] = await readStored(conn, view);
   }
-  const failures = verificationFailures(views.RECONCILIATION, views.DQ_CHECKS);
+  const failures = verificationFailures(
+    [...views.RECONCILIATION, ...views.PERIOD_TO_DATE_CHECKS],
+    views.DQ_CHECKS,
+  );
   if (failures.length > 0) throw new ReconciliationError(failures);
 
   cached = { views, mode: 'stored', durationMs: Date.now() - started };
@@ -241,7 +254,7 @@ export async function loadSqlResults(conn: DuckDBConnection): Promise<SqlResults
 
 /** One-line-per-check console summary for ingest and startup logs. */
 export function reconciliationTable(results: SqlResults) {
-  return results.views.RECONCILIATION.map((r) => ({
+  return [...results.views.RECONCILIATION, ...results.views.PERIOD_TO_DATE_CHECKS].map((r) => ({
     check: r.check_id,
     kind: r.check_kind,
     expected: r.expected,

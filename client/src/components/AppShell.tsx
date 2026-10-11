@@ -9,11 +9,12 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import type { Role } from '@pic/shared';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import type { OverviewScope, Role } from '@pic/shared';
 import { useTrend } from '../api/queries';
 import { useAuth } from '../auth/AuthProvider';
+import { SCOPE_PARAM, parseScope, useOverviewScope } from '../lib/overviewScope';
 import { useAlerts, type ConnectionStatus } from '../realtime/AlertsProvider';
 import { RoleBadge } from './ui';
 
@@ -73,9 +74,85 @@ function TickIndicator() {
   );
 }
 
+/**
+ * Today / Period-to-date switch. Today = the replay's snapshot N; period = snapshots 1..N.
+ * The choice lives in the URL (?scope=) so it can be shared and survives a reload.
+ */
+function ScopeSwitch() {
+  const { tick } = useAlerts();
+  const { scope, setScope } = useOverviewScope();
+  const { pathname } = useLocation();
+  const options: { value: OverviewScope; short: string; long: string }[] = [
+    { value: 'today', short: 'Today', long: `Today · ${tick?.snapshotDate ?? '—'}` },
+    {
+      value: 'period',
+      short: 'Period',
+      long: `Period to date (1–${tick ? tick.tick + 1 : '—'})`,
+    },
+  ];
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        role="radiogroup"
+        aria-label="Time range"
+        className="inline-flex rounded-md border border-gray-300 bg-gray-50 p-0.5 text-xs"
+      >
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={scope === o.value}
+            onClick={() => setScope(o.value)}
+            className={`rounded px-2 py-1 whitespace-nowrap tabular-nums ${
+              scope === o.value
+                ? 'bg-white font-medium text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <span className="sm:hidden">{o.short}</span>
+            <span className="hidden sm:inline">{o.long}</span>
+          </button>
+        ))}
+      </div>
+      {scope === 'period' && pathname !== '/' && (
+        <span className="hidden text-xs text-gray-500 xl:inline">
+          Period view applies to Overview
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Keeps ?scope= on every URL: a link or filter reset that drops it gets the last value back,
+ * so the switch survives navigation. Replaces the history entry (no extra Back step).
+ */
+function useKeepScopeInUrl() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const last = useRef<OverviewScope>('today');
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const current = parseScope(params.get(SCOPE_PARAM));
+    if (current) {
+      last.current = current;
+      return;
+    }
+    params.set(SCOPE_PARAM, last.current);
+    void navigate(
+      { pathname: location.pathname, search: `?${params.toString()}`, hash: location.hash },
+      { replace: true },
+    );
+  }, [location, navigate]);
+  // The URL's value once present; until the effect has put it back, the last one seen.
+  return parseScope(new URLSearchParams(location.search).get(SCOPE_PARAM)) ?? last.current;
+}
+
 export default function AppShell() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const scope = useKeepScopeInUrl();
   if (!user) return null;
 
   const items = NAV.filter((i) => !i.roles || i.roles.includes(user.role));
@@ -102,7 +179,7 @@ export default function AppShell() {
           {items.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
-              to={to}
+              to={{ pathname: to, search: `?${SCOPE_PARAM}=${scope}` }}
               end={to === '/'}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
@@ -139,8 +216,9 @@ export default function AppShell() {
           </button>
           <TickIndicator />
           <ConnectionDot />
+          <ScopeSwitch />
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-xs text-gray-500 sm:inline">{user.email}</span>
+            <span className="hidden text-xs text-gray-500 xl:inline">{user.email}</span>
             <RoleBadge role={user.role} />
             <button
               type="button"

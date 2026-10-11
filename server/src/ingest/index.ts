@@ -1,7 +1,7 @@
 /*
  * `npm run ingest`: CSV → data/warehouse.duckdb + data/dq_summary.json.
  *
- * After loading, it runs the /sql suite (02–08) and stores its results; any FAIL in
+ * After loading, it runs the /sql suite (02–09) and stores its results; any FAIL in
  * RECONCILIATION or DQ_CHECKS fails the ingest (and therefore the Render build).
  *
  * Builds into data/warehouse.tmp.duckdb and only renames it over warehouse.duckdb after
@@ -99,7 +99,7 @@ function printSummary({ summary, counts, sql }: BuildResult): void {
   );
   console.table(Object.entries(counts).map(([table, rows]) => ({ table, rows })));
   console.log(`DQ summary written to ${DQ_SUMMARY_PATH}`);
-  console.log(`\nSQL suite 02–08 verified and stored in ${sql.durationMs} ms. Reconciliation:`);
+  console.log(`\nSQL suite 02–09 verified and stored in ${sql.durationMs} ms. Reconciliation:`);
   console.table(reconciliationTable(sql));
 }
 

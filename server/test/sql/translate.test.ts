@@ -119,7 +119,7 @@ describe('the /sql suite', () => {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
-  it('has the numbered files 00–08', () => {
+  it('has the numbered files 00–09', () => {
     expect(files.map((f) => f.slice(0, 2))).toEqual([
       '00',
       '01',
@@ -130,6 +130,7 @@ describe('the /sql suite', () => {
       '06',
       '07',
       '08',
+      '09',
     ]);
   });
 
@@ -141,7 +142,7 @@ describe('the /sql suite', () => {
     expect(() => loadSql(file)).not.toThrow();
   });
 
-  it('cost SQL (03–08) never reads the uncleaned credits column', () => {
+  it('cost SQL (03–09) never reads the uncleaned credits column', () => {
     for (const file of files.filter((f) => f >= '03')) {
       const text = fs.readFileSync(path.join(SQL_DIR, file), 'utf8');
       expect(text, file).not.toMatch(/snowflake_credits_consumed/i);

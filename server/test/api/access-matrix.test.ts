@@ -45,7 +45,9 @@ const MATRIX: Row[] = [
   { method: 'post', path: '/auth/logout', allowed: 'public', success: 204 },
   { method: 'get', path: '/auth/me', allowed: ANY, success: 200 },
   { method: 'get', path: '/overview', allowed: ANY, success: 200 },
+  { method: 'get', path: '/overview', query: '?scope=period', allowed: ANY, success: 200 },
   { method: 'get', path: '/overview/trend', allowed: ANY, success: 200 },
+  { method: 'get', path: '/overview/trend', query: '?scope=period', allowed: ANY, success: 200 },
   { method: 'get', path: '/reports', allowed: ANY, success: 200 },
   {
     method: 'get',

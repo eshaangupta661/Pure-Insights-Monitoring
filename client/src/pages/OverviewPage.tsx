@@ -10,10 +10,17 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { LatencyBucket, OverviewKpis, OverviewTrend, RefreshStatus } from '@pic/shared';
-import { useOverview, useTrend } from '../api/queries';
+import type {
+  LatencyBucket,
+  OverviewKpis,
+  OverviewTrend,
+  PeriodOverview,
+  RefreshStatus,
+} from '@pic/shared';
+import { useOverview, usePeriodOverview, useTrend } from '../api/queries';
 import { Card, EmptyState, ErrorState, SeverityBadge, Skeleton } from '../components/ui';
 import { formatInt, formatPercent, formatSeconds, formatUsd } from '../lib/format';
+import { useOverviewScope } from '../lib/overviewScope';
 import { STATUS_ORDER, STATUS_STYLE } from '../lib/status';
 import { useAlerts } from '../realtime/AlertsProvider';
 
@@ -67,6 +74,53 @@ function KpiTiles({ kpis, warningSec }: { kpis: OverviewKpis; warningSec: number
         label="Cost this snapshot"
         value={formatUsd(cost)}
         detail={`Snowflake ${formatUsd(kpis.totals.snapshotSnowflakeCostUsd)} · AWS ${formatUsd(kpis.totals.snapshotAwsCostUsd)}`}
+      />
+    </div>
+  );
+}
+
+/** Period to date (snapshots 1..N): every figure comes from /sql/09_period_to_date.sql. */
+function PeriodTiles({ p, warningSec }: { p: PeriodOverview; warningSec: number | undefined }) {
+  const span = `snapshots 1–${p.snapshotCount}`;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <Tile
+        label="Refresh success"
+        value={p.refreshSuccessRate === null ? '—' : formatPercent(p.refreshSuccessRate)}
+        detail={`${formatInt(p.refresh.SUCCESS)} of ${formatInt(p.refreshCount)} refreshes, ${span}`}
+      />
+      <Tile
+        label="Failed + timed out"
+        value={formatInt(p.refresh.FAILED + p.refresh.TIMED_OUT)}
+        detail={`${formatInt(p.refresh.FAILED)} failed · ${formatInt(p.refresh.TIMED_OUT)} timed out`}
+      />
+      <Tile
+        label="Reports ever orphaned"
+        value={formatInt(p.everOrphanedCount)}
+        detail={`of ${formatInt(p.reportCount)} had no owner in at least one snapshot`}
+      />
+      <Tile
+        label="Snowflake cost to date"
+        value={formatUsd(p.totals.snowflakeCostToDateUsd)}
+        detail={`${p.snapshotCount} days${
+          p.quarantinedSnapshotCount
+            ? ` · ${formatInt(p.quarantinedSnapshotCount)} snapshots with unknown cost left out`
+            : ''
+        } · AWS (monthly bill) not included`}
+      />
+      <Tile
+        label="Average load time"
+        value={formatSeconds(p.avgLoadTimeSec)}
+        detail={`Over all ${formatInt(p.refreshCount)} report snapshots`}
+      />
+      <Tile
+        label="p95 load time"
+        value={formatSeconds(p.p95LoadTimeSec)}
+        detail={
+          warningSec
+            ? `95% of report snapshots loaded faster · warning at ${warningSec} s`
+            : '95% of report snapshots loaded faster'
+        }
       />
     </div>
   );
@@ -295,27 +349,42 @@ function TopProblems() {
 }
 
 export default function OverviewPage() {
+  const { scope } = useOverviewScope();
+  const isPeriod = scope === 'period';
   const overview = useOverview();
-  const trend = useTrend();
+  const period = usePeriodOverview(isPeriod);
+  const trend = useTrend(scope);
+  const kpis = isPeriod ? period : overview;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div>
         <h1 className="text-lg font-semibold text-gray-900">Overview</h1>
-        {overview.data && (
-          <p className="text-xs text-gray-500">Snapshot dated {overview.data.snapshotDate}</p>
-        )}
+        {isPeriod
+          ? period.data && (
+              <p className="text-xs text-gray-500">
+                Period to date: snapshots 1–{period.data.snapshotCount} ({period.data.fromDate} to{' '}
+                {period.data.toDate})
+              </p>
+            )
+          : overview.data && (
+              <p className="text-xs text-gray-500">Snapshot dated {overview.data.snapshotDate}</p>
+            )}
       </div>
 
-      {overview.isPending && <KpiSkeleton />}
-      {overview.isError && (
+      {kpis.isPending && <KpiSkeleton />}
+      {kpis.isError && (
         <Card>
-          <ErrorState message={overview.error.message} onRetry={() => void overview.refetch()} />
+          <ErrorState message={kpis.error.message} onRetry={() => void kpis.refetch()} />
         </Card>
       )}
-      {overview.data && (
-        <KpiTiles kpis={overview.data} warningSec={trend.data?.thresholds.warningSec} />
-      )}
+      {isPeriod
+        ? period.data && (
+            <PeriodTiles p={period.data} warningSec={trend.data?.thresholds.warningSec} />
+          )
+        : overview.data && (
+            <KpiTiles kpis={overview.data} warningSec={trend.data?.thresholds.warningSec} />
+          )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Refresh status by snapshot" subtitle="Reports per status, all snapshots">
@@ -327,7 +396,11 @@ export default function OverviewPage() {
         </Card>
         <Card
           title="Load time distribution"
-          subtitle="Reports per load-time range, current snapshot"
+          subtitle={
+            isPeriod
+              ? `Report snapshots per load-time range, snapshots 1–${(trend.data?.currentIdx ?? 0) + 1}`
+              : 'Reports per load-time range, current snapshot'
+          }
         >
           {trend.isPending && <Skeleton className="h-64" />}
           {trend.isError && (

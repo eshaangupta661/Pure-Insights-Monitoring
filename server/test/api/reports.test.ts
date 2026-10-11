@@ -254,6 +254,116 @@ describe('reports API (admin)', () => {
     });
   });
 
+  describe('GET /overview?scope=period', () => {
+    /** Independent expectations straight from REPORT_SNAPSHOTS and the attribution results. */
+    const expected = async (n: number) => {
+      const [row] = await t.sql<{
+        rows: number;
+        success: number;
+        failed: number;
+        timed_out: number;
+        unknown: number;
+        orphaned: number;
+        avg_load: number;
+        cost: number;
+        quarantined: number;
+      }>(
+        `SELECT count(*)::INTEGER AS rows,
+                COUNT_IF(s.last_refresh_status = 'SUCCESS')::INTEGER AS success,
+                COUNT_IF(s.last_refresh_status = 'FAILED')::INTEGER AS failed,
+                COUNT_IF(s.last_refresh_status = 'TIMED_OUT')::INTEGER AS timed_out,
+                COUNT_IF(s.last_refresh_status = 'UNKNOWN')::INTEGER AS unknown,
+                COUNT(DISTINCT CASE WHEN s.owner_email IS NULL THEN s.report_id END)::INTEGER AS orphaned,
+                AVG(s.avg_load_time_sec) AS avg_load,
+                COALESCE(SUM(d.attributed_cost_usd), 0) AS cost,
+                COUNT_IF(s.credits_clean IS NULL)::INTEGER AS quarantined
+         FROM REPORT_SNAPSHOTS s
+         LEFT JOIN REPORT_ATTRIBUTION_DAILY d
+           ON d.report_id = s.report_id AND d.usage_date = s.snapshot_date
+         WHERE s.snapshot_idx <= ${n}`,
+      );
+      const loads = (
+        await t.sql<{ x: number }>(
+          `SELECT avg_load_time_sec AS x FROM REPORT_SNAPSHOTS WHERE snapshot_idx <= ${n} ORDER BY x`,
+        )
+      ).map((r) => r.x);
+      // PERCENTILE_CONT: linear interpolation at rank 0.95 × (n − 1).
+      const pos = 0.95 * (loads.length - 1);
+      const lo = Math.floor(pos);
+      const p95 =
+        loads[lo]! + (loads[Math.min(lo + 1, loads.length - 1)]! - loads[lo]!) * (pos - lo);
+      return { ...row!, p95 };
+    };
+
+    it.each([LATEST_TICK, 4, 0])(
+      'at snapshot %i: every KPI equals an independent recount',
+      async (n) => {
+        t.clock.set(n);
+        try {
+          const res = await admin.get('/api/v1/overview?scope=period');
+          expect(res.status).toBe(200);
+          const p = res.body;
+          const e = await expected(n);
+          expect(p).toMatchObject({
+            scope: 'period',
+            snapshotIdx: n,
+            snapshotCount: n + 1,
+            fromDate: '2026-09-21',
+            reportCount: 100,
+            refreshCount: e.rows,
+            refresh: {
+              SUCCESS: e.success,
+              FAILED: e.failed,
+              TIMED_OUT: e.timed_out,
+              UNKNOWN: e.unknown,
+            },
+            everOrphanedCount: e.orphaned,
+            quarantinedSnapshotCount: e.quarantined,
+          });
+          expect(e.rows).toBe(100 * (n + 1));
+          expect(p.refreshSuccessRate).toBeCloseTo(e.success / e.rows, 12);
+          expect(p.avgLoadTimeSec).toBeCloseTo(e.avg_load, 9);
+          expect(p.p95LoadTimeSec).toBeCloseTo(e.p95, 9);
+          expect(p.totals.snowflakeCostToDateUsd).toBeCloseTo(e.cost, 6);
+        } finally {
+          t.clock.set(LATEST_TICK);
+        }
+      },
+    );
+
+    it('at the last snapshot, cost to date equals all attributed report cost; today is unchanged', async () => {
+      const p = (await admin.get('/api/v1/overview?scope=period')).body;
+      const today = (await admin.get('/api/v1/overview')).body;
+      expect(today.scope).toBe('today');
+      expect((await admin.get('/api/v1/overview?scope=today')).body).toEqual(today);
+      expect(p.totals.snowflakeCostToDateUsd).toBeCloseTo(today.totals.attributedCostUsd, 6);
+      expect(p.everOrphanedCount).toBe(94);
+      expect(p.refresh.FAILED + p.refresh.TIMED_OUT).toBe(382 + 182);
+    });
+
+    it('rejects an unknown scope', async () => {
+      for (const path of ['/overview?scope=week', '/overview/trend?scope=']) {
+        const res = await admin.get(`/api/v1${path}`);
+        expect(res.status, path).toBe(400);
+        expect(res.body.error.message).toMatch(/^query\.scope/);
+      }
+    });
+
+    it('trend?scope=period: the histogram covers snapshots 0..N', async () => {
+      t.clock.set(4);
+      try {
+        const res = (await admin.get('/api/v1/overview/trend?scope=period')).body;
+        expect(res.scope).toBe('period');
+        expect(res.latency.reduce((a: number, b: { count: number }) => a + b.count, 0)).toBe(500);
+        const today = (await admin.get('/api/v1/overview/trend')).body;
+        expect(today.scope).toBe('today');
+        expect(today.latency.reduce((a: number, b: { count: number }) => a + b.count, 0)).toBe(100);
+      } finally {
+        t.clock.set(LATEST_TICK);
+      }
+    });
+  });
+
   describe('GET /data-quality', () => {
     it('unscoped counts and samples equal data/dq_summary.json; SQL checks all PASS', async () => {
       const summary = JSON.parse(fs.readFileSync(DQ_SUMMARY_PATH, 'utf8')) as DqSummary;

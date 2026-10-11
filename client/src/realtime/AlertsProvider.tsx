@@ -24,6 +24,7 @@ import {
   ALERTS_KEY,
   ANOMALIES_KEY,
   OVERVIEW_KEY,
+  PERIOD_KEY,
   REPLAY_KEY,
   REPORTS_KEY,
   TREND_KEY,
@@ -174,6 +175,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       refreshLists();
       void queryClient.invalidateQueries({ queryKey: REPLAY_KEY });
       void queryClient.invalidateQueries({ queryKey: TREND_KEY });
+      void queryClient.invalidateQueries({ queryKey: PERIOD_KEY });
       void queryClient.invalidateQueries({ queryKey: ANOMALIES_KEY });
     });
     socket.on('kpi:update', (kpis: OverviewKpis) => {

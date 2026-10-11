@@ -1,5 +1,12 @@
 import type { DuckDBValue } from '@duckdb/node-api';
-import type { LatencyBucket, OverviewKpis, OverviewTrend, RefreshCounts } from '@pic/shared';
+import type {
+  LatencyBucket,
+  OverviewKpis,
+  OverviewScope,
+  OverviewTrend,
+  PeriodOverview,
+  RefreshCounts,
+} from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
 import { config } from '../config.js';
 import type { Queryable } from '../data/warehouse.js';
@@ -53,6 +60,7 @@ export async function getOverview(
   if (!row) throw new Error('overview query returned no row');
 
   return {
+    scope: 'today',
     tick,
     snapshotIdx: tick,
     snapshotDate: snapshotDateFor(tick),
@@ -74,6 +82,76 @@ export async function getOverview(
       snapshotSnowflakeCostUsd: row.snapshotSnowflakeCostUsd,
       snapshotAwsCostUsd: row.snapshotAwsCostUsd,
     },
+  };
+}
+
+/**
+ * Period to date: snapshots 0..`tick`, over the caller's scope, read from the live
+ * PERIOD_TO_DATE view (/sql/09; live because rows are grouped by current owner). Unscoped
+ * callers get the portfolio row; an owner gets their own row. Nothing is computed here.
+ */
+export async function getPeriodOverview(
+  db: Queryable,
+  scope: Scope,
+  tick: number,
+): Promise<PeriodOverview> {
+  const params: DuckDBValue[] = [tick];
+  const where =
+    scope.kind === 'all'
+      ? `scope_kind = 'ALL'`
+      : `scope_kind = 'OWNER' AND ${scopeSql(scope, 'current_owner', params)}`;
+  const [row] = await db.query<{
+    reportCount: number;
+    SUCCESS: number;
+    FAILED: number;
+    TIMED_OUT: number;
+    UNKNOWN: number;
+    refreshCount: number;
+    refreshSuccessRate: number | null;
+    everOrphanedCount: number;
+    quarantinedSnapshotCount: number;
+    avgLoadTimeSec: number | null;
+    p95LoadTimeSec: number | null;
+    snowflakeCostToDateUsd: number;
+  }>(
+    `SELECT report_count               AS "reportCount",
+            success_count              AS "SUCCESS",
+            failed_count               AS "FAILED",
+            timed_out_count            AS "TIMED_OUT",
+            unknown_count              AS "UNKNOWN",
+            refresh_count              AS "refreshCount",
+            refresh_success_rate       AS "refreshSuccessRate",
+            ever_orphaned_count        AS "everOrphanedCount",
+            quarantined_snapshot_count AS "quarantinedSnapshotCount",
+            avg_load_time_sec          AS "avgLoadTimeSec",
+            p95_load_time_sec          AS "p95LoadTimeSec",
+            snowflake_cost_to_date_usd AS "snowflakeCostToDateUsd"
+     FROM PERIOD_TO_DATE
+     WHERE period_end_idx = $1 AND ${where}`,
+    params,
+  );
+  // An owner with no reports has no row: an empty period, not an error.
+  return {
+    scope: 'period',
+    tick,
+    snapshotIdx: tick,
+    fromDate: snapshotDateFor(0),
+    toDate: snapshotDateFor(tick),
+    snapshotCount: tick + 1,
+    reportCount: row?.reportCount ?? 0,
+    refresh: {
+      SUCCESS: row?.SUCCESS ?? 0,
+      FAILED: row?.FAILED ?? 0,
+      TIMED_OUT: row?.TIMED_OUT ?? 0,
+      UNKNOWN: row?.UNKNOWN ?? 0,
+    },
+    refreshCount: row?.refreshCount ?? 0,
+    refreshSuccessRate: row?.refreshSuccessRate ?? null,
+    everOrphanedCount: row?.everOrphanedCount ?? 0,
+    quarantinedSnapshotCount: row?.quarantinedSnapshotCount ?? 0,
+    avgLoadTimeSec: row?.avgLoadTimeSec ?? null,
+    p95LoadTimeSec: row?.p95LoadTimeSec ?? null,
+    totals: { snowflakeCostToDateUsd: row?.snowflakeCostToDateUsd ?? 0 },
   };
 }
 
@@ -99,11 +177,15 @@ export function bucketLatencies(
   return buckets;
 }
 
-/** Refresh counts for every snapshot, and the load-time histogram at `tick`, over the scope. */
+/**
+ * Refresh counts for every snapshot, and the load-time histogram over the scope: of snapshot
+ * `tick` (today) or of snapshots 0..`tick` (period).
+ */
 export async function getOverviewTrend(
   db: Queryable,
   scope: Scope,
   tick: number,
+  overviewScope: OverviewScope = 'today',
 ): Promise<OverviewTrend> {
   const trendParams: DuckDBValue[] = [config.LATENCY_WARNING_SEC];
   const rows = await db.query<TrendRow>(
@@ -127,11 +209,13 @@ export async function getOverviewTrend(
     `SELECT s.avg_load_time_sec AS "loadTimeSec"
      FROM REPORT_SNAPSHOTS s
      JOIN REPORT_CURRENT_OWNER o ON o.report_id = s.report_id
-     WHERE s.snapshot_idx = $1 AND ${scopeSql(scope, 'o.current_owner', loadParams)}`,
+     WHERE s.snapshot_idx ${overviewScope === 'period' ? '<=' : '='} $1
+       AND ${scopeSql(scope, 'o.current_owner', loadParams)}`,
     loadParams,
   );
 
   return {
+    scope: overviewScope,
     currentIdx: tick,
     points: rows.map((r) => ({
       snapshotIdx: r.snapshotIdx,

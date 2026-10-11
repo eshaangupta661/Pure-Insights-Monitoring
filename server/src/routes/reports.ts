@@ -1,6 +1,7 @@
 import {
   dataQualitySchema,
-  overviewSchema,
+  overviewQuerySchema,
+  overviewResponseSchema,
   overviewTrendSchema,
   ownerOverrideBodySchema,
   reportDetailSchema,
@@ -14,7 +15,7 @@ import { notFound } from '../http/errors.js';
 import { pageSchema } from '../http/pagination.js';
 import { defineRoute } from '../http/route.js';
 import { getDataQuality } from '../repos/dataQuality.js';
-import { getOverviewTrend } from '../repos/overview.js';
+import { getOverviewTrend, getPeriodOverview } from '../repos/overview.js';
 import { setOwnerOverride } from '../repos/owners.js';
 import { getReport, listReports } from '../repos/reports.js';
 
@@ -27,14 +28,22 @@ export const reportRoutes = [
     method: 'get',
     path: '/overview',
     tag: 'reports',
-    summary: 'KPIs for the current replay snapshot',
+    summary: 'KPIs for the replay snapshot, or period to date',
     description:
-      `${SCOPE_NOTE} \`totals\` are aggregates, so every role sees them. \`alerts\` counts ` +
-      'active (OPEN + ACKNOWLEDGED) alerts in scope.',
+      `${SCOPE_NOTE} \`scope=today\` (default): the replay's snapshot N, with \`alerts\` ` +
+      'counting active (OPEN + ACKNOWLEDGED) alerts in scope. `scope=period`: snapshots 0..N ' +
+      '(/sql/09_period_to_date.sql): refresh success rate, failed and timed-out refreshes, ' +
+      'reports ever orphaned, Snowflake cost to date, average and p95 load time. `totals` ' +
+      'are aggregates, so every role sees them.',
     access: 'authenticated',
-    response: overviewSchema,
-    viewerResponse: overviewSchema,
-    handler: ({ deps, scope }) => deps.realtime.overview(scope),
+    query: overviewQuerySchema,
+    response: overviewResponseSchema,
+    viewerResponse: overviewResponseSchema,
+    handler: async ({ deps, scope, query }) => {
+      if (query.scope === 'today') return deps.realtime.overview(scope);
+      await deps.realtime.sync(); // same tick as the rest of the app
+      return getPeriodOverview(deps.warehouse, scope, deps.clock.tick());
+    },
   }),
 
   defineRoute({
@@ -44,11 +53,14 @@ export const reportRoutes = [
     summary: 'Refresh-status trend and load-time histogram',
     description:
       `${SCOPE_NOTE} \`points\` has one entry per snapshot (all of them, so the client can show ` +
-      'where the replay is); `latency` is the load-time histogram of the current snapshot.',
+      'where the replay is); `latency` is the load-time histogram of snapshot N ' +
+      '(`scope=today`, default) or of snapshots 0..N (`scope=period`).',
     access: 'authenticated',
+    query: overviewQuerySchema,
     response: overviewTrendSchema,
     viewerResponse: overviewTrendSchema,
-    handler: ({ deps, scope }) => getOverviewTrend(deps.warehouse, scope, deps.clock.tick()),
+    handler: ({ deps, scope, query }) =>
+      getOverviewTrend(deps.warehouse, scope, deps.clock.tick(), query.scope),
   }),
 
   defineRoute({

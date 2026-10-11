@@ -35,6 +35,8 @@ describe('viewer never receives per-report cost fields', () => {
   const requests = [
     ...viewerGets.map((p) => `${p}?pageSize=100`),
     '/costs/chargeback?view=current&pageSize=100',
+    '/overview?scope=period',
+    '/overview/trend?scope=period',
   ];
 
   it('covers the cost-bearing endpoints', () => {

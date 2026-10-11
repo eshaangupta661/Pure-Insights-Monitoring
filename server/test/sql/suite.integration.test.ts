@@ -45,6 +45,37 @@ describe('SQL suite (real CSV → :memory:)', () => {
   afterAll(() => closeDb(db));
 
   describe('verification', () => {
+    it('passes every period-to-date check (09)', () => {
+      const rows = results.views.PERIOD_TO_DATE_CHECKS;
+      expect(rows.map((r) => [r.check_id, r.check_kind, r.status])).toEqual([
+        ['P1_LAST_PERIOD_CREDITS_EQ_ATTRIBUTED', 'CONSISTENCY', 'PASS'],
+        ['P2_OWNER_ROWS_SUM_TO_PORTFOLIO', 'CONSISTENCY', 'PASS'],
+        ['P3_REFRESHES_EQ_REPORTS_TIMES_SNAPSHOTS', 'CONSISTENCY', 'PASS'],
+        ['P4_EVER_ORPHANED_EQ_ORPHANED_VIEW', 'CONSISTENCY', 'PASS'],
+        ['P5_TO_DATE_NEVER_DECREASES', 'CONSISTENCY', 'PASS'],
+      ]);
+    });
+
+    it('PERIOD_TO_DATE: one portfolio row per snapshot plus owner rows; profiled data facts', () => {
+      const all = results.views.PERIOD_TO_DATE.filter((r) => r.scope_kind === 'ALL');
+      expect(all.map((r) => r.period_end_idx).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: config.SNAPSHOT_COUNT }, (_, i) => i),
+      );
+      const last = all.find((r) => r.period_end_idx === config.SNAPSHOT_COUNT - 1)!;
+      expect(last).toMatchObject({
+        refresh_count: 2000,
+        success_count: 1336,
+        failed_count: 382,
+        timed_out_count: 182,
+        unknown_count: 100,
+        quarantined_snapshot_count: 24,
+        report_count: 100,
+      });
+      expect(last.refresh_success_rate).toBeCloseTo(1336 / 2000, 12);
+      expect(last.p95_load_time_sec!).toBeGreaterThan(last.avg_load_time_sec!);
+      expect(last.p95_load_time_sec!).toBeLessThanOrEqual(55);
+    });
+
     it('passes every RECONCILIATION check, each tagged with its kind', () => {
       const rows = results.views.RECONCILIATION;
       expect(rows.map((r) => [r.check_id, r.check_kind, r.status])).toEqual([
@@ -447,7 +478,7 @@ describe('SQL suite (real CSV → :memory:)', () => {
 
     it('the fingerprint changes with any /sql file edit or PARAMS value', () => {
       const inputs = currentFingerprintInputs();
-      expect(Object.keys(inputs.sql)).toHaveLength(9); // 00–08
+      expect(Object.keys(inputs.sql)).toHaveLength(10); // 00–09
       expect(inputs.params).toMatchObject({
         SIMULATED_OVERHEAD_RATE: 0.15,
         ORPHAN_OWNER_MARKERS: config.ORPHAN_OWNER_MARKERS,

@@ -144,6 +144,28 @@ export interface OwnerChargebackRow {
   share_of_total_cost: number | null;
 }
 
+export interface PeriodToDateRow {
+  period_end_idx: number;
+  scope_kind: 'ALL' | 'OWNER';
+  current_owner: string | null;
+  from_date: string;
+  to_date: string;
+  snapshot_count: number;
+  report_count: number;
+  refresh_count: number;
+  success_count: number;
+  failed_count: number;
+  timed_out_count: number;
+  unknown_count: number;
+  refresh_success_rate: number | null;
+  ever_orphaned_count: number;
+  snowflake_credits_to_date: number;
+  snowflake_cost_to_date_usd: number;
+  quarantined_snapshot_count: number;
+  avg_load_time_sec: number | null;
+  p95_load_time_sec: number | null;
+}
+
 export interface ReconciliationRow {
   check_id: string;
   check_kind: 'CONSERVATION' | 'GROUND_TRUTH' | 'CONSISTENCY';
@@ -170,6 +192,8 @@ export interface SqlViewRows {
   OWNER_CHARGEBACK: OwnerChargebackRow;
   OWNER_CHARGEBACK_CURRENT: OwnerChargebackRow;
   RECONCILIATION: ReconciliationRow;
+  PERIOD_TO_DATE: PeriodToDateRow;
+  PERIOD_TO_DATE_CHECKS: ReconciliationRow;
 }
 
 export type CachedView = keyof SqlViewRows;

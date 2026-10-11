@@ -155,6 +155,10 @@ components:
     OverviewKpis:
       type: object
       properties:
+        scope:
+          type: string
+          enum:
+            - today
         tick:
           type: integer
         snapshotIdx:
@@ -200,6 +204,7 @@ components:
         totals:
           $ref: "#/components/schemas/OverviewCostTotals"
       required:
+        - scope
         - tick
         - snapshotIdx
         - snapshotDate
@@ -213,9 +218,104 @@ components:
         - totalViews
         - alerts
         - totals
+    PeriodCostTotals:
+      type: object
+      properties:
+        snowflakeCostToDateUsd:
+          type: number
+          description: USD, unrounded
+      required:
+        - snowflakeCostToDateUsd
+      description: Aggregates; visible to every role
+    PeriodOverview:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - period
+        tick:
+          type: integer
+        snapshotIdx:
+          type: integer
+        fromDate:
+          type: string
+          format: date
+          example: 2026-10-10
+        toDate:
+          type: string
+          format: date
+          example: 2026-10-10
+        snapshotCount:
+          type: integer
+        reportCount:
+          type: integer
+        refresh:
+          type: object
+          properties:
+            SUCCESS:
+              type: integer
+            FAILED:
+              type: integer
+            TIMED_OUT:
+              type: integer
+            UNKNOWN:
+              type: integer
+          required:
+            - SUCCESS
+            - FAILED
+            - TIMED_OUT
+            - UNKNOWN
+        refreshCount:
+          type: integer
+        refreshSuccessRate:
+          type: number
+          nullable: true
+        everOrphanedCount:
+          type: integer
+        quarantinedSnapshotCount:
+          type: integer
+        avgLoadTimeSec:
+          type: number
+          nullable: true
+        p95LoadTimeSec:
+          type: number
+          nullable: true
+        totals:
+          $ref: "#/components/schemas/PeriodCostTotals"
+      required:
+        - scope
+        - tick
+        - snapshotIdx
+        - fromDate
+        - toDate
+        - snapshotCount
+        - reportCount
+        - refresh
+        - refreshCount
+        - refreshSuccessRate
+        - everOrphanedCount
+        - quarantinedSnapshotCount
+        - avgLoadTimeSec
+        - p95LoadTimeSec
+        - totals
+    OverviewResponse:
+      oneOf:
+        - $ref: "#/components/schemas/OverviewKpis"
+        - $ref: "#/components/schemas/PeriodOverview"
+      discriminator:
+        propertyName: scope
+        mapping:
+          today: "#/components/schemas/OverviewKpis"
+          period: "#/components/schemas/PeriodOverview"
     OverviewTrend:
       type: object
       properties:
+        scope:
+          type: string
+          enum:
+            - today
+            - period
         currentIdx:
           type: integer
         points:
@@ -279,6 +379,7 @@ components:
             - warningSec
             - criticalSec
       required:
+        - scope
         - currentIdx
         - points
         - latency
@@ -1522,11 +1623,11 @@ paths:
     get:
       tags:
         - reports
-      summary: KPIs for the current replay snapshot
+      summary: KPIs for the replay snapshot, or period to date
       description: |-
         Roles: admin, owner, viewer.
 
-        Owners see only reports whose current owner is their email (filtered in SQL). Viewers get the same rows without cost fields. `totals` are aggregates, so every role sees them. `alerts` counts active (OPEN + ACKNOWLEDGED) alerts in scope.
+        Owners see only reports whose current owner is their email (filtered in SQL). Viewers get the same rows without cost fields. `scope=today` (default): the replay's snapshot N, with `alerts` counting active (OPEN + ACKNOWLEDGED) alerts in scope. `scope=period`: snapshots 0..N (/sql/09_period_to_date.sql): refresh success rate, failed and timed-out refreshes, reports ever orphaned, Snowflake cost to date, average and p95 load time. `totals` are aggregates, so every role sees them.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1534,13 +1635,30 @@ paths:
         - admin
         - owner
         - viewer
+      parameters:
+        - schema:
+            type: string
+            enum: &a1
+              - today
+              - period
+            default: today
+            description: today = the replay snapshot N; period = snapshots 0..N
+          required: false
+          name: scope
+          in: query
       responses:
         "200":
           description: Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OverviewKpis"
+                $ref: "#/components/schemas/OverviewResponse"
+        "400":
+          description: "VALIDATION_ERROR: invalid query, path or body"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: "UNAUTHENTICATED: no valid session"
           content:
@@ -1555,7 +1673,7 @@ paths:
       description: |-
         Roles: admin, owner, viewer.
 
-        Owners see only reports whose current owner is their email (filtered in SQL). Viewers get the same rows without cost fields. `points` has one entry per snapshot (all of them, so the client can show where the replay is); `latency` is the load-time histogram of the current snapshot.
+        Owners see only reports whose current owner is their email (filtered in SQL). Viewers get the same rows without cost fields. `points` has one entry per snapshot (all of them, so the client can show where the replay is); `latency` is the load-time histogram of snapshot N (`scope=today`, default) or of snapshots 0..N (`scope=period`).
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1563,6 +1681,15 @@ paths:
         - admin
         - owner
         - viewer
+      parameters:
+        - schema:
+            type: string
+            enum: *a1
+            default: today
+            description: today = the replay snapshot N; period = snapshots 0..N
+          required: false
+          name: scope
+          in: query
       responses:
         "200":
           description: Success
@@ -1570,6 +1697,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OverviewTrend"
+        "400":
+          description: "VALIDATION_ERROR: invalid query, path or body"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: "UNAUTHENTICATED: no valid session"
           content:
@@ -1624,7 +1757,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: &a1
+            enum: &a2
               - "true"
               - "false"
             description: true = no owner at this snapshot (the override wins)
@@ -1633,7 +1766,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: *a1
+            enum: *a2
             description: true = load time > 15s at this snapshot
           required: false
           name: slow
@@ -1895,7 +2028,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: &a2
+            enum: &a3
               - asc
               - desc
             description: Default depends on `sort`
@@ -2012,7 +2145,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: *a2
+            enum: *a3
             description: Default depends on `sort`
           required: false
           name: order
@@ -2163,7 +2296,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: *a2
+            enum: *a3
             description: Default depends on `sort`
           required: false
           name: order
@@ -2281,7 +2414,7 @@ paths:
           in: query
         - schema:
             type: string
-            enum: *a1
+            enum: *a2
             description: false = leave out RESOLVED alerts (the default is to include them)
           required: false
           name: resolved
