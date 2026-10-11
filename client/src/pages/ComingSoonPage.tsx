@@ -11,7 +11,7 @@ export default function ComingSoonPage({
 }) {
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+      <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">{title}</h1>
       <Card className="mt-4">
         {notFound ? (
           <EmptyState title="There is nothing at this address" />

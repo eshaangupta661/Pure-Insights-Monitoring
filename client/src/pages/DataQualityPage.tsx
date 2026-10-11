@@ -36,7 +36,7 @@ export default function DataQualityPage() {
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Data Quality</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Data Quality</h1>
           <p className="text-xs text-gray-500">
             Rules run over every snapshot of the reports in your scope. Rows are flagged, never
             silently dropped.

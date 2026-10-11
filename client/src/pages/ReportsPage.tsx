@@ -155,7 +155,7 @@ export default function ReportsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Reports</h1>
+        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Reports</h1>
         <p className="text-xs text-gray-500">At the replay’s current snapshot.</p>
       </div>
 

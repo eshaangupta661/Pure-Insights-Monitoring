@@ -98,7 +98,7 @@ function ScopeSwitch() {
     <div
       role="radiogroup"
       aria-label="Time range"
-      className="inline-flex rounded-lg bg-gray-100 p-0.5 text-xs"
+      className="inline-flex rounded-xl bg-gray-100 p-1 text-sm ring-1 ring-gray-200"
     >
       {options.map((o) => (
         <button
@@ -110,10 +110,10 @@ function ScopeSwitch() {
             o.long + (o.value === 'period' && pathname !== '/' ? ' (applies to Overview)' : '')
           }
           onClick={() => setScope(o.value)}
-          className={`rounded-md px-3 py-1 whitespace-nowrap ${
+          className={`rounded-lg px-5 py-2 font-semibold whitespace-nowrap transition-colors ${
             scope === o.value
-              ? 'bg-white font-medium text-gray-900 shadow-sm'
-              : 'text-gray-500 hover:text-gray-900'
+              ? 'bg-accent text-white shadow-md shadow-accent/30'
+              : 'text-gray-600 hover:bg-white hover:text-gray-900'
           }`}
         >
           {o.short}
@@ -159,14 +159,14 @@ export default function AppShell() {
   return (
     <div className="flex h-full">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r border-gray-200 bg-white transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r border-gray-200 bg-white transition-transform lg:static lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4">
-          <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <span className="flex size-6 items-center justify-center rounded-md bg-accent text-white">
-              <Activity className="size-3.5" aria-hidden />
+        <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
+          <span className="flex items-center gap-2 font-display text-base font-extrabold tracking-tight text-gray-900">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-indigo-600 text-white shadow-sm">
+              <Activity className="size-4" aria-hidden />
             </span>
             Pure Insights
           </span>
@@ -187,9 +187,9 @@ export default function AppShell() {
               end={to === '/'}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 rounded-md px-3 py-2 text-sm ${
+                `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[15px] ${
                   isActive
-                    ? 'bg-accent-soft font-medium text-accent-strong'
+                    ? 'bg-accent-soft font-semibold text-accent-strong'
                     : 'text-gray-700 hover:bg-gray-100'
                 }`
               }
@@ -209,7 +209,7 @@ export default function AppShell() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 md:px-6">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 md:px-6">
           <button
             type="button"
             className="rounded p-1 text-gray-600 hover:bg-gray-100 lg:hidden"
