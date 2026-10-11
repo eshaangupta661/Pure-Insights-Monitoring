@@ -97,6 +97,8 @@ export const config = {
    * basis for cost per view (/sql/05, matching 30-day views) and zombie savings (/sql/06).
    */
   DAYS_PER_MONTH: 30,
+  /** Days one snapshot covers (assumption; snapshot i is SNAPSHOT_BASE_DATE + i days). */
+  SNAPSHOT_DAYS: 1,
   COST_ROBUST_Z: 3.5,
   COST_LOW_VIEWS: 50,
   COST_HIGH_AWS_USD: 300,

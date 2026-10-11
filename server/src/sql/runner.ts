@@ -5,7 +5,7 @@
  * (about 1.2 s locally at threads=1, slower on Render's shared CPU), while loading the stored
  * results takes well under 100 ms and keeps the cold start predictable:
  *
- *   runSqlSuite(conn)     `npm run ingest`. Checks PARAMS against config, runs 02–09 (so the 03
+ *   runSqlSuite(conn)     `npm run ingest`. Checks PARAMS against config, runs 02–10 (so the 03
  *                         tables are rebuilt from the current ACCOUNT_USAGE data every time),
  *                         fails if any RECONCILIATION or DQ_CHECKS row is FAIL, then stores every
  *                         cached view as a table in schema SQL_RESULTS plus SUITE_FINGERPRINT.
@@ -43,6 +43,8 @@ export const SQL_SUITE: readonly { file: string; cache: readonly CachedView[] }[
   { file: '08_reconciliation.sql', cache: ['RECONCILIATION'] },
   // PERIOD_SNAPSHOT_ROWS (~21k rows) is on demand; the API reads PERIOD_TO_DATE live (owners).
   { file: '09_period_to_date.sql', cache: ['PERIOD_TO_DATE', 'PERIOD_TO_DATE_CHECKS'] },
+  // COST_DAILY_SERIES / COST_PROJECTION(_FIT) are grouped by current owner: read live.
+  { file: '10_cost_projection.sql', cache: ['COST_PROJECTION_CHECKS'] },
 ];
 
 /** 00 and 01 run at ingest before the data loads; they are part of the fingerprint too. */
@@ -50,12 +52,10 @@ const SETUP_FILES = ['00_setup_parameters.sql', '01_schema.sql'];
 export const RESULTS_SCHEMA = 'SQL_RESULTS';
 export const FINGERPRINT_TABLE = 'SUITE_FINGERPRINT';
 const CACHED_VIEWS: readonly CachedView[] = SQL_SUITE.flatMap((s) => s.cache);
+/** PASS/FAIL check views with RECONCILIATION's columns (08, 09, 10). */
+const CHECK_VIEWS = ['RECONCILIATION', 'PERIOD_TO_DATE_CHECKS', 'COST_PROJECTION_CHECKS'] as const;
 /** Stored first and verified before anything else is stored. */
-const VERIFIED_VIEWS: readonly CachedView[] = [
-  'RECONCILIATION',
-  'PERIOD_TO_DATE_CHECKS',
-  'DQ_CHECKS',
-];
+const VERIFIED_VIEWS: readonly CachedView[] = [...CHECK_VIEWS, 'DQ_CHECKS'];
 
 /** The suite could not run or its stored results can't be trusted (drift, stale, missing). */
 export class SqlSuiteError extends Error {
@@ -85,7 +85,7 @@ export function getSqlResults(): SqlResults {
 }
 
 export interface FingerprintInputs {
-  /** file name → SQL as executed (after translation), for every /sql file 00–09. */
+  /** file name → SQL as executed (after translation), for every /sql file 00–10. */
   sql: Readonly<Record<string, string>>;
   /** The PARAMS values (config.ts is their source of truth) plus the orphan markers. */
   params: Readonly<Record<string, unknown>>;
@@ -138,7 +138,7 @@ async function assertNoParamDrift(conn: DuckDBConnection): Promise<void> {
   }
 }
 
-/** `reconciliation` holds the rows of every PASS/FAIL check view: RECONCILIATION (08) and 09's. */
+/** `reconciliation` holds the rows of every PASS/FAIL check view (CHECK_VIEWS: 08, 09, 10). */
 function verificationFailures(
   reconciliation: readonly ReconciliationRow[],
   dqChecks: readonly DqCheckRow[],
@@ -184,13 +184,9 @@ export async function runSqlSuite(conn: DuckDBConnection): Promise<SqlResults> {
     `DROP SCHEMA IF EXISTS ${RESULTS_SCHEMA} CASCADE; CREATE SCHEMA ${RESULTS_SCHEMA};`,
   );
   for (const view of VERIFIED_VIEWS) await storeView(conn, view);
-  const failures = verificationFailures(
-    [
-      ...(await readStored(conn, 'RECONCILIATION')),
-      ...(await readStored(conn, 'PERIOD_TO_DATE_CHECKS')),
-    ],
-    await readStored(conn, 'DQ_CHECKS'),
-  );
+  const checkRows: ReconciliationRow[] = [];
+  for (const view of CHECK_VIEWS) checkRows.push(...(await readStored(conn, view)));
+  const failures = verificationFailures(checkRows, await readStored(conn, 'DQ_CHECKS'));
   if (failures.length > 0) {
     await conn.run(`DROP SCHEMA ${RESULTS_SCHEMA} CASCADE`);
     throw new ReconciliationError(failures);
@@ -243,7 +239,7 @@ export async function loadSqlResults(conn: DuckDBConnection): Promise<SqlResults
     (views as Record<CachedView, unknown[]>)[view] = await readStored(conn, view);
   }
   const failures = verificationFailures(
-    [...views.RECONCILIATION, ...views.PERIOD_TO_DATE_CHECKS],
+    CHECK_VIEWS.flatMap((v) => views[v]),
     views.DQ_CHECKS,
   );
   if (failures.length > 0) throw new ReconciliationError(failures);
@@ -254,7 +250,7 @@ export async function loadSqlResults(conn: DuckDBConnection): Promise<SqlResults
 
 /** One-line-per-check console summary for ingest and startup logs. */
 export function reconciliationTable(results: SqlResults) {
-  return [...results.views.RECONCILIATION, ...results.views.PERIOD_TO_DATE_CHECKS].map((r) => ({
+  return CHECK_VIEWS.flatMap((v) => results.views[v]).map((r) => ({
     check: r.check_id,
     kind: r.check_kind,
     expected: r.expected,

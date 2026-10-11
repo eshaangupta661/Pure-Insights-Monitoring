@@ -49,6 +49,8 @@ describe('viewer never receives per-report cost fields', () => {
         '/costs/unit-economics',
         '/costs/anomalies',
         '/costs/chargeback',
+        '/costs/assumptions',
+        '/costs/projection',
       ]),
     );
   });
@@ -77,8 +79,8 @@ describe('viewer never receives per-report cost fields', () => {
 
     for (const path of requests) {
       const asAdmin = await admin.get(`/api/v1${path}`);
-      // Routes whose only money is in `totals` (overview) or that have none (auth, DQ, alerts).
-      const hasPerRowCost = !/^\/(auth|data-quality|overview|alerts)/.test(path);
+      // Routes whose only money is in `totals` (overview, projection) or that have none.
+      const hasPerRowCost = !/^\/(auth|data-quality|overview|alerts|costs\/projection)/.test(path);
       if (hasPerRowCost) expect(costKeyPaths(asAdmin.body).length, path).toBeGreaterThan(0);
     }
   });

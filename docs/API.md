@@ -57,6 +57,8 @@ curl -b jar 'https://<host>/api/v1/reports?pageSize=5'
 | `GET /auth/me`, `/overview`, `/overview/trend`, `/reports`, `/reports/:id`, `/data-quality`, `/alerts` |   ✓   | own reports | ✓ (no per-report $) |    401    |
 | `GET /costs/reports`, `/costs/unit-economics`, `/costs/anomalies`, `/costs/chargeback`                 |   ✓   | own reports |   aggregates only   |    401    |
 | `GET /costs/chargeback?view=point_in_time`                                                             |   ✓   |     403     |   aggregates only   |    401    |
+| `GET /costs/projection`                                                                                |   ✓   | own reports |   ✓ (aggregates)    |    401    |
+| `GET /costs/assumptions`                                                                               |   ✓   | own reports |     params only     |    401    |
 | `PATCH /reports/:id/owner`                                                                             |   ✓   |     403     |         403         |    401    |
 | `POST /alerts/:id/ack`, `POST /alerts/ack` (bulk)                                                      |   ✓   | own alerts  |         403         |    401    |
 | `GET/POST /admin/replay`, `POST /admin/incidents`, `GET /admin/audit-log`                              |   ✓   |     403     |         403         |    401    |
@@ -193,7 +195,7 @@ snapshots.
   the reports in scope; unscoped, they equal `data/dq_summary.json`. It also returns the
   quarantine count and `checks`: PASS/FAIL of the SQL re-computation in `/sql/02`.
 
-### Costs (`/sql` 04–07)
+### Costs (`/sql` 04–07, 10)
 
 | endpoint                                                             | rows                                   | notes                                                                                                                                                                 |
 | -------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -202,11 +204,27 @@ snapshots.
 | `GET /costs/anomalies`                                               | short sections, not paginated          | `perViewOutliers`, `orphaned`, `zombies`, `awsViewsMismatch`, `quarantinedSnapshots`, plus `snapshotIdx` and `totals` (see below)                                     |
 | `GET /costs/chargeback?view=point_in_time\|current&sort=cost\|owner` | per owner + `UNOWNED` + `UNATTRIBUTED` | point-in-time (admins and viewers; 403 for owners): each snapshot charged to that snapshot's owner. current (owners' default): whole history charged to today's owner |
 
+| `GET /costs/assumptions` | one object | `params` (PARAMS from `/sql/00` plus `snapshotDays`) and `example`: the most expensive report in scope at the replay's snapshot, traced from one warehouse-hour allocation (`/sql/03`) to daily, 30-day and per-view cost (`/sql/04–05`). Viewers get `params` only |
+| `GET /costs/projection` | one object | daily Snowflake cost over the caller's scope, linear trend over snapshots 0..N, forecast N+1..last with a ±1.96σ band, month-end projection and MAPE (below) |
+
 Numbers that don't depend on ownership come from the results stored and reconciled at ingest
 (`SQL_RESULTS`). The owner always comes from the live `REPORT_CURRENT_OWNER` view. The row sets
 that depend on ownership (current-owner chargeback, orphaned and zombie reports) are read from
 the live views, so overrides show up immediately. They are also the slowest calls, about
 40–100 ms locally.
+
+**Projection** (`/sql/10_cost_projection.sql`). For N = the replay's snapshot (`currentIdx`), the
+SQL fits `cost = intercept + slope × snapshot_idx` by least squares (`REGR_SLOPE` /
+`REGR_INTERCEPT`) to the daily attributed Snowflake cost of snapshots 0..N.
+`totals.points[]` covers every snapshot: `actualCostUsd`, `replayed` (`snapshotIdx <= N`; show the
+rest faded as not yet replayed), `trendCostUsd`, and after N `forecastLowUsd` / `forecastHighUsd`
+= trend ± 1.96 × the residual standard error (needs 3+ points). `mape` is the mean absolute
+percentage error of the trend over the snapshots after N (`holdoutCount`); null at the last
+snapshot. `totals.projectedMonthEndUsd` = cost to date + run rate (cost to date / (N + 1)) ×
+`remainingDays` of a `daysPerMonth`-day month. AWS hosting is a monthly bill and is not
+forecast. Every money figure is a scope-wide aggregate under `totals`, so viewers get the same
+body; owners get their own reports' series. Checks F1–F4 (`COST_PROJECTION_CHECKS`) tie it to
+`/sql/09` and verify the fit.
 
 **Orphaned vs. zombie** (`/sql/06`). Two separate problems with different fixes, both at the
 replay's current snapshot (`snapshotIdx`):

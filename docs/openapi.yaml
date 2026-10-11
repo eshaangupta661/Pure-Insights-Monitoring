@@ -1277,6 +1277,257 @@ components:
         - point_in_time
         - current
       description: "Default `point_in_time` for admins and viewers, `current` for owners. Owners may not request `point_in_time` (403): it charges past snapshots to whoever owned them then, which includes reports the owner no longer owns."
+    CostParameters:
+      type: object
+      properties:
+        creditPriceUsd:
+          type: number
+          description: USD, unrounded
+        simulatedOverheadRate:
+          type: number
+        snapshotDays:
+          type: integer
+        daysPerMonth:
+          type: integer
+        costLowViews:
+          type: integer
+        costHighAwsUsd:
+          type: number
+          description: USD, unrounded
+        costRobustZ:
+          type: number
+      required:
+        - creditPriceUsd
+        - simulatedOverheadRate
+        - snapshotDays
+        - daysPerMonth
+        - costLowViews
+        - costHighAwsUsd
+        - costRobustZ
+      description: PARAMS (/sql/00) plus fixed assumptions
+    CostWorkedExample:
+      type: object
+      nullable: true
+      properties:
+        reportId:
+          type: string
+        reportName:
+          type: string
+        currentOwner:
+          type: string
+          nullable: true
+        snapshotIdx:
+          type: integer
+        snapshotDate:
+          type: string
+          format: date
+          example: 2026-10-10
+        queryHour:
+          type: object
+          nullable: true
+          properties:
+            queryId:
+              type: string
+            warehouseName:
+              type: string
+            hourStart:
+              type: string
+            hourMeteredCredits:
+              type: number
+            execMsInHour:
+              type: number
+            hourExecMs:
+              type: number
+            attributedCredits:
+              type: number
+          required:
+            - queryId
+            - warehouseName
+            - hourStart
+            - hourMeteredCredits
+            - execMsInHour
+            - hourExecMs
+            - attributedCredits
+        queryCount:
+          type: integer
+        attributedCredits:
+          type: number
+        activeCredits:
+          type: number
+        overheadCredits:
+          type: number
+        snowflakeCostUsd:
+          type: number
+          description: USD, unrounded
+        snowflakeCost30dUsd:
+          type: number
+          description: USD, unrounded
+        awsCostUsd:
+          type: number
+          description: USD, unrounded
+        fullyLoadedCostUsd:
+          type: number
+          description: USD, unrounded
+        views:
+          type: integer
+        snowflakeCostPerView:
+          type: number
+          nullable: true
+          description: USD, unrounded
+        fullyLoadedCostPerView:
+          type: number
+          nullable: true
+          description: USD, unrounded
+      required:
+        - reportId
+        - reportName
+        - currentOwner
+        - snapshotIdx
+        - snapshotDate
+        - queryHour
+        - queryCount
+        - attributedCredits
+        - activeCredits
+        - overheadCredits
+        - snowflakeCostUsd
+        - snowflakeCost30dUsd
+        - awsCostUsd
+        - fullyLoadedCostUsd
+        - views
+        - snowflakeCostPerView
+        - fullyLoadedCostPerView
+    ViewerCostAssumptions:
+      type: object
+      properties:
+        snapshotIdx:
+          type: integer
+        snapshotDate:
+          type: string
+          format: date
+          example: 2026-10-10
+        params:
+          $ref: "#/components/schemas/CostParameters"
+      required:
+        - snapshotIdx
+        - snapshotDate
+        - params
+    CostAssumptions:
+      allOf:
+        - $ref: "#/components/schemas/ViewerCostAssumptions"
+        - type: object
+          properties:
+            example:
+              $ref: "#/components/schemas/CostWorkedExample"
+          required:
+            - example
+    CostProjectionTotals:
+      type: object
+      properties:
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              snapshotIdx:
+                type: integer
+              snapshotDate:
+                type: string
+                format: date
+                example: 2026-10-10
+              actualCostUsd:
+                type: number
+                description: USD, unrounded
+              replayed:
+                type: boolean
+              trendCostUsd:
+                type: number
+                nullable: true
+                description: USD, unrounded
+              forecastLowUsd:
+                type: number
+                nullable: true
+                description: USD, unrounded
+              forecastHighUsd:
+                type: number
+                nullable: true
+                description: USD, unrounded
+            required:
+              - snapshotIdx
+              - snapshotDate
+              - actualCostUsd
+              - replayed
+              - trendCostUsd
+              - forecastLowUsd
+              - forecastHighUsd
+        fit:
+          type: object
+          properties:
+            pointCount:
+              type: integer
+            slopeUsdPerDay:
+              type: number
+              nullable: true
+              description: USD, unrounded
+            interceptUsd:
+              type: number
+              nullable: true
+              description: USD, unrounded
+            residualSdUsd:
+              type: number
+              nullable: true
+              description: USD, unrounded
+          required:
+            - pointCount
+            - slopeUsdPerDay
+            - interceptUsd
+            - residualSdUsd
+        costToDateUsd:
+          type: number
+          description: USD, unrounded
+        runRateUsdPerDay:
+          type: number
+          nullable: true
+          description: USD, unrounded
+        projectedMonthEndUsd:
+          type: number
+          nullable: true
+          description: USD, unrounded
+      required:
+        - points
+        - fit
+        - costToDateUsd
+        - runRateUsdPerDay
+        - projectedMonthEndUsd
+      description: Aggregates; visible to every role
+    CostProjection:
+      type: object
+      properties:
+        currentIdx:
+          type: integer
+        daysElapsed:
+          type: integer
+        remainingDays:
+          type: integer
+        daysPerMonth:
+          type: integer
+        holdoutCount:
+          type: integer
+        mape:
+          type: number
+          nullable: true
+        quarantinedSnapshotCount:
+          type: integer
+        totals:
+          $ref: "#/components/schemas/CostProjectionTotals"
+      required:
+        - currentIdx
+        - daysElapsed
+        - remainingDays
+        - daysPerMonth
+        - holdoutCount
+        - mape
+        - quarantinedSnapshotCount
+        - totals
     AlertRuleId:
       type: string
       enum:
@@ -2367,6 +2618,66 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "403":
           description: "FORBIDDEN: a viewer asked for a cost sort, or an owner asked for view=point_in_time"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/costs/assumptions:
+    get:
+      tags:
+        - costs
+      summary: "How cost is calculated: PARAMS and a worked example (/sql/00, 03–05)"
+      description: |-
+        Roles: admin, owner, viewer.
+
+        The PARAMS values the suite ran with (credit price, simulated overhead rate, days per month, low-views threshold, …) plus a worked example: the most expensive report in the caller’s scope at the replay’s snapshot, followed from one warehouse-hour allocation (/sql/03) to its daily and 30-day cost (/sql/04–05). `example` is null when nothing in scope has known cost and views. Viewers get the parameters only (no per-report example).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      x-roles:
+        - admin
+        - owner
+        - viewer
+      responses:
+        "200":
+          description: Success. Viewers receive the cost-free variant (second schema).
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/CostAssumptions"
+                  - $ref: "#/components/schemas/ViewerCostAssumptions"
+        "401":
+          description: "UNAUTHENTICATED: no valid session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/costs/projection:
+    get:
+      tags:
+        - costs
+      summary: Daily Snowflake cost with a linear trend forecast (/sql/10)
+      description: |-
+        Roles: admin, owner, viewer.
+
+        Daily attributed Snowflake cost over the caller’s scope (the portfolio, or an owner’s own reports, filtered in SQL). A least-squares line is fitted to snapshots 0..N (N = `currentIdx`, the replay’s snapshot) and forecast for N+1..last with a ±1.96σ band. Points after N are actuals not yet replayed (show them faded); `mape` scores the forecast against them. `projectedMonthEndUsd` = cost to date + run rate × remaining days of a `daysPerMonth` month. Aggregates only, so viewers get the same body.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      x-roles:
+        - admin
+        - owner
+        - viewer
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostProjection"
+        "401":
+          description: "UNAUTHENTICATED: no valid session"
           content:
             application/json:
               schema:

@@ -35,6 +35,8 @@ import {
   controlClass,
 } from '../components/ui';
 import { formatCredits, formatInt, formatShare, formatUsd } from '../lib/format';
+import { CostForecast, useCostProjection } from './CostForecast';
+import { CostMethod } from './CostMethod';
 
 const COST_PAGE_SIZE = 10;
 const CHARGEBACK_PAGE_SIZE = 100;
@@ -603,6 +605,7 @@ export default function CostPage() {
     placeholderData: keepPreviousData,
   });
   const a = anomalies.data;
+  const projection = useCostProjection().data;
   const atSnapshot = a ? `At snapshot ${a.snapshotIdx + 1}` : 'At the replay’s snapshot';
 
   return (
@@ -618,7 +621,7 @@ export default function CostPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {totals.data ? (
           <>
             <Tile
@@ -676,11 +679,33 @@ export default function CostPage() {
         ) : (
           Array.from({ length: 2 }, (_, i) => <Skeleton key={`a${i}`} className="h-24" />)
         )}
+        {projection ? (
+          <Tile
+            label="Projected month-end"
+            value={
+              projection.totals.projectedMonthEndUsd === null
+                ? '—'
+                : formatUsd(projection.totals.projectedMonthEndUsd)
+            }
+            detail={
+              <>
+                Snowflake, {projection.daysPerMonth}-day month:{' '}
+                {formatUsd(projection.totals.costToDateUsd)} over {projection.daysElapsed} days +
+                run rate × {projection.remainingDays} days{' '}
+                <InfoTip text="Cost to date plus the average daily cost so far (run rate) times the days left in the month. Simulated data; AWS hosting not included." />
+              </>
+            }
+          />
+        ) : (
+          <Skeleton className="h-24" />
+        )}
       </div>
       {totals.isError && (
         <ErrorState message={totals.error.message} onRetry={() => void totals.refetch()} />
       )}
 
+      <CostMethod />
+      <CostForecast />
       <ReportCosts moneyVisible={moneyVisible} />
       {moneyVisible && <UnitEconomics />}
       <Widget

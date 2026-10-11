@@ -17,7 +17,12 @@ import type {
   ChargebackRow,
   ChargebackTotals,
   ChargebackView,
+  CostAssumptions,
+  CostExampleQueryHour,
+  CostProjection,
+  CostProjectionPoint,
   CostReportsTotals,
+  CostWorkedExample,
   CostRow,
   OrphanedReport,
   PageWithTotals,
@@ -28,8 +33,10 @@ import type {
   ZombieReport,
 } from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
+import { config } from '../config.js';
 import type { Queryable } from '../data/warehouse.js';
 import { paginate, type PageQuery } from '../http/pagination.js';
+import { snapshotDateFor } from '../realtime/clock.js';
 import { RESULTS_SCHEMA } from '../sql/runner.js';
 
 async function withTotals<T, U>(
@@ -290,4 +297,164 @@ export function listChargeback(
             COALESCE(SUM("totalCostUsd"), 0)      AS "totalCostUsd"
      FROM scoped`,
   );
+}
+
+// ---- assumptions and worked example (00, 03–05) -----------------------------------------
+
+/**
+ * PARAMS as the suite ran with them, and the most expensive report in scope at the replay's
+ * snapshot traced from a warehouse hour to its owner. Every number is a /sql column; the only
+ * arithmetic here is 04's active/overhead split applied to one day's credits.
+ */
+export async function getCostAssumptions(
+  db: Queryable,
+  scope: Scope,
+  tick: number,
+): Promise<CostAssumptions> {
+  const [p] = await db.query<{
+    credit_price_usd: number;
+    simulated_overhead_rate: number;
+    days_per_month: number;
+    cost_low_views: number;
+    cost_high_aws_usd: number;
+    cost_robust_z: number;
+  }>('SELECT * FROM PARAMS');
+  if (!p) throw new Error('PARAMS is empty');
+
+  const params: DuckDBValue[] = [tick];
+  const [example] = await db.query<Omit<CostWorkedExample, 'queryHour'>>(
+    `SELECT u.report_id AS "reportId", u.report_name AS "reportName",
+            o.current_owner AS "currentOwner", u.snapshot_idx AS "snapshotIdx",
+            u.snapshot_date AS "snapshotDate",
+            COALESCE(d.query_count, 0)::INTEGER AS "queryCount",
+            u.attributed_credits AS "attributedCredits",
+            u.attributed_credits / (1 + p.simulated_overhead_rate) AS "activeCredits",
+            u.attributed_credits - u.attributed_credits / (1 + p.simulated_overhead_rate)
+                                                                  AS "overheadCredits",
+            u.snowflake_cost_usd AS "snowflakeCostUsd",
+            u.snowflake_cost_30d_usd AS "snowflakeCost30dUsd",
+            u.aws_cost_usd AS "awsCostUsd", u.fully_loaded_cost_usd AS "fullyLoadedCostUsd",
+            u.views, u.snowflake_cost_per_view AS "snowflakeCostPerView",
+            u.fully_loaded_cost_per_view AS "fullyLoadedCostPerView"
+     FROM ${RESULTS_SCHEMA}.UNIT_ECONOMICS_SNAPSHOT u
+     JOIN REPORT_CURRENT_OWNER o ON o.report_id = u.report_id
+     LEFT JOIN ${RESULTS_SCHEMA}.REPORT_ATTRIBUTION_DAILY d
+       ON d.report_id = u.report_id AND d.usage_date = u.snapshot_date
+     CROSS JOIN PARAMS p
+     WHERE u.snapshot_idx = $1 AND u.attributed_credits > 0 AND u.views > 0
+       AND ${scopeSql(scope, 'o.current_owner', params)}
+     ORDER BY u.snowflake_cost_usd DESC, u.report_id
+     LIMIT 1`,
+    params,
+  );
+
+  let queryHour: CostExampleQueryHour | null = null;
+  if (example) {
+    const [row] = await db.query<CostExampleQueryHour>(
+      `SELECT h.QUERY_ID AS "queryId", h.WAREHOUSE_NAME AS "warehouseName",
+              CAST(h.hour_start AS VARCHAR) AS "hourStart",
+              h.hour_metered_credits AS "hourMeteredCredits",
+              h.exec_ms_in_hour AS "execMsInHour", h.hour_exec_ms AS "hourExecMs",
+              h.attributed_credits AS "attributedCredits"
+       FROM QUERY_ATTRIBUTED_COST q
+       JOIN QUERY_HOUR_COST h ON h.QUERY_ID = q.QUERY_ID
+       WHERE q.report_id = $1 AND q.usage_date = $2::DATE
+       ORDER BY h.attributed_credits DESC, h.QUERY_ID, h.hour_start
+       LIMIT 1`,
+      [example.reportId, example.snapshotDate],
+    );
+    queryHour = row ?? null;
+  }
+
+  return {
+    snapshotIdx: tick,
+    snapshotDate: snapshotDateFor(tick),
+    params: {
+      creditPriceUsd: p.credit_price_usd,
+      simulatedOverheadRate: p.simulated_overhead_rate,
+      snapshotDays: config.SNAPSHOT_DAYS,
+      daysPerMonth: p.days_per_month,
+      costLowViews: p.cost_low_views,
+      costHighAwsUsd: p.cost_high_aws_usd,
+      costRobustZ: p.cost_robust_z,
+    },
+    example: example ? { ...example, queryHour } : null,
+  };
+}
+
+// ---- projection (10) --------------------------------------------------------------------
+
+/**
+ * The /sql/10 fit for period end `tick` over the caller's scope (live: rows are grouped by
+ * current owner). Unscoped callers get the portfolio; an owner gets their own series, or an
+ * empty one when they own nothing.
+ */
+export async function getCostProjection(
+  db: Queryable,
+  scope: Scope,
+  tick: number,
+): Promise<CostProjection> {
+  const params: DuckDBValue[] = [tick];
+  const where =
+    scope.kind === 'all'
+      ? `scope_kind = 'ALL'`
+      : `scope_kind = 'OWNER' AND ${scopeSql(scope, 'current_owner', params)}`;
+
+  const points = await db.query<CostProjectionPoint>(
+    `SELECT snapshot_idx AS "snapshotIdx", snapshot_date AS "snapshotDate",
+            actual_cost_usd AS "actualCostUsd", is_replayed AS "replayed",
+            trend_cost_usd AS "trendCostUsd", forecast_low_usd AS "forecastLowUsd",
+            forecast_high_usd AS "forecastHighUsd"
+     FROM COST_PROJECTION
+     WHERE period_end_idx = $1 AND ${where}
+     ORDER BY snapshot_idx`,
+    params,
+  );
+  const [fit] = await db.query<{
+    pointCount: number;
+    slopeUsdPerDay: number | null;
+    interceptUsd: number | null;
+    residualSdUsd: number | null;
+    costToDateUsd: number;
+    runRateUsdPerDay: number | null;
+    daysElapsed: number;
+    remainingDays: number;
+    projectedMonthEndUsd: number | null;
+    holdoutCount: number;
+    mape: number | null;
+    quarantinedSnapshotCount: number;
+  }>(
+    `SELECT point_count AS "pointCount", slope_usd_per_day AS "slopeUsdPerDay",
+            intercept_usd AS "interceptUsd", residual_sd_usd AS "residualSdUsd",
+            cost_to_date_usd AS "costToDateUsd", run_rate_usd_per_day AS "runRateUsdPerDay",
+            days_elapsed AS "daysElapsed", remaining_days AS "remainingDays",
+            projected_month_end_usd AS "projectedMonthEndUsd", holdout_count AS "holdoutCount",
+            mape, quarantined_snapshot_count AS "quarantinedSnapshotCount"
+     FROM COST_PROJECTION_FIT
+     WHERE period_end_idx = $1 AND ${where}`,
+    params,
+  );
+
+  // An owner with no reports has no rows: an empty series, not an error.
+  return {
+    currentIdx: tick,
+    daysElapsed: fit?.daysElapsed ?? tick + 1,
+    remainingDays: fit?.remainingDays ?? Math.max(config.DAYS_PER_MONTH - (tick + 1), 0),
+    daysPerMonth: config.DAYS_PER_MONTH,
+    holdoutCount: fit?.holdoutCount ?? 0,
+    mape: fit?.mape ?? null,
+    quarantinedSnapshotCount: fit?.quarantinedSnapshotCount ?? 0,
+    totals: {
+      points,
+      fit: {
+        pointCount: fit?.pointCount ?? 0,
+        slopeUsdPerDay: fit?.slopeUsdPerDay ?? null,
+        interceptUsd: fit?.interceptUsd ?? null,
+        residualSdUsd: fit?.residualSdUsd ?? null,
+      },
+      costToDateUsd: fit?.costToDateUsd ?? 0,
+      runRateUsdPerDay: fit?.runRateUsdPerDay ?? null,
+      projectedMonthEndUsd: fit?.projectedMonthEndUsd ?? null,
+    },
+  };
 }

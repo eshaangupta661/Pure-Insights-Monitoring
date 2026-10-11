@@ -67,6 +67,8 @@ const MATRIX: Row[] = [
   { method: 'get', path: '/costs/reports', allowed: ANY, success: 200 },
   { method: 'get', path: '/costs/unit-economics', allowed: ANY, success: 200 },
   { method: 'get', path: '/costs/anomalies', allowed: ANY, success: 200 },
+  { method: 'get', path: '/costs/assumptions', allowed: ANY, success: 200 },
+  { method: 'get', path: '/costs/projection', allowed: ANY, success: 200 },
   // Owners default to view=current; point-in-time is an accounting view, not for owners (M1).
   { method: 'get', path: '/costs/chargeback', allowed: ANY, success: 200 },
   { method: 'get', path: '/costs/chargeback', query: '?view=current', allowed: ANY, success: 200 },

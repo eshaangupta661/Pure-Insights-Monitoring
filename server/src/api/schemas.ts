@@ -29,6 +29,9 @@ import type {
   ChargebackRow,
   ChargebackTotals,
   ChargebackView,
+  CostAssumptions,
+  CostProjection,
+  ViewerCostAssumptions,
   CostReportsTotals,
   CostRow,
   OwnerOverrideRequest,
@@ -822,6 +825,98 @@ export const chargebackTotalsSchema = z
   })
   .openapi('ChargebackTotals');
 assertTrue<AssertEqual<z.infer<typeof chargebackTotalsSchema>, ChargebackTotals>>();
+
+export const costParametersSchema = z
+  .object({
+    creditPriceUsd: usd,
+    simulatedOverheadRate: z.number(),
+    snapshotDays: z.number().int(),
+    daysPerMonth: z.number().int(),
+    costLowViews: z.number().int(),
+    costHighAwsUsd: usd,
+    costRobustZ: z.number(),
+  })
+  .openapi('CostParameters', { description: 'PARAMS (/sql/00) plus fixed assumptions' });
+
+export const viewerCostAssumptionsSchema = z
+  .object({ snapshotIdx: z.number().int(), snapshotDate: isoDate, params: costParametersSchema })
+  .openapi('ViewerCostAssumptions');
+assertTrue<AssertEqual<z.infer<typeof viewerCostAssumptionsSchema>, ViewerCostAssumptions>>();
+
+export const costAssumptionsSchema = viewerCostAssumptionsSchema
+  .extend({
+    example: z
+      .object({
+        reportId: z.string(),
+        reportName: z.string(),
+        currentOwner: z.string().nullable(),
+        snapshotIdx: z.number().int(),
+        snapshotDate: isoDate,
+        queryHour: z
+          .object({
+            queryId: z.string(),
+            warehouseName: z.string(),
+            hourStart: z.string(),
+            hourMeteredCredits: z.number(),
+            execMsInHour: z.number(),
+            hourExecMs: z.number(),
+            attributedCredits: z.number(),
+          })
+          .nullable(),
+        queryCount: z.number().int(),
+        attributedCredits: z.number(),
+        activeCredits: z.number(),
+        overheadCredits: z.number(),
+        snowflakeCostUsd: usd,
+        snowflakeCost30dUsd: usd,
+        awsCostUsd: usd,
+        fullyLoadedCostUsd: usd,
+        views: z.number().int(),
+        snowflakeCostPerView: nullableUsd,
+        fullyLoadedCostPerView: nullableUsd,
+      })
+      .nullable()
+      .openapi('CostWorkedExample'),
+  })
+  .openapi('CostAssumptions');
+assertTrue<AssertEqual<z.infer<typeof costAssumptionsSchema>, CostAssumptions>>();
+
+export const costProjectionSchema = z
+  .object({
+    currentIdx: z.number().int(),
+    daysElapsed: z.number().int(),
+    remainingDays: z.number().int(),
+    daysPerMonth: z.number().int(),
+    holdoutCount: z.number().int(),
+    mape: z.number().nullable(),
+    quarantinedSnapshotCount: z.number().int(),
+    totals: z
+      .object({
+        points: z.array(
+          z.object({
+            snapshotIdx: z.number().int(),
+            snapshotDate: isoDate,
+            actualCostUsd: usd,
+            replayed: z.boolean(),
+            trendCostUsd: nullableUsd,
+            forecastLowUsd: nullableUsd,
+            forecastHighUsd: nullableUsd,
+          }),
+        ),
+        fit: z.object({
+          pointCount: z.number().int(),
+          slopeUsdPerDay: nullableUsd,
+          interceptUsd: nullableUsd,
+          residualSdUsd: nullableUsd,
+        }),
+        costToDateUsd: usd,
+        runRateUsdPerDay: nullableUsd,
+        projectedMonthEndUsd: nullableUsd,
+      })
+      .openapi('CostProjectionTotals', { description: 'Aggregates; visible to every role' }),
+  })
+  .openapi('CostProjection');
+assertTrue<AssertEqual<z.infer<typeof costProjectionSchema>, CostProjection>>();
 
 /** Page<item> plus scope-wide `totals`. */
 export function pageWithTotalsSchema<T extends z.ZodTypeAny, U extends z.ZodTypeAny>(

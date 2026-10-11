@@ -561,6 +561,110 @@ export interface ChargebackTotals {
   totalCostUsd: number;
 }
 
+/** The PARAMS values (/sql/00) and fixed assumptions the cost figures rest on. */
+export interface CostParameters {
+  creditPriceUsd: number;
+  /** metered credits = query credits × (1 + rate); synthetic, not measured idle time. */
+  simulatedOverheadRate: number;
+  /** Days a snapshot covers (1): daily cost × daysPerMonth = 30-day cost. */
+  snapshotDays: number;
+  daysPerMonth: number;
+  /** Zombie threshold: views below this at a snapshot. */
+  costLowViews: number;
+  costHighAwsUsd: number;
+  costRobustZ: number;
+}
+
+/** One query-hour allocation row (/sql/03 QUERY_HOUR_COST) of the example report. */
+export interface CostExampleQueryHour {
+  queryId: string;
+  warehouseName: string;
+  hourStart: string;
+  hourMeteredCredits: number;
+  execMsInHour: number;
+  hourExecMs: number;
+  attributedCredits: number;
+}
+
+/**
+ * A worked example with real numbers: the most expensive report in scope at the replay's
+ * snapshot, followed from a warehouse hour to its owner. Every value is read from /sql 03–05.
+ */
+export interface CostWorkedExample {
+  reportId: string;
+  reportName: string;
+  currentOwner: string | null;
+  snapshotIdx: number;
+  snapshotDate: string;
+  /** The report's largest query-hour that day (a query split across hours shows one part). */
+  queryHour: CostExampleQueryHour | null;
+  queryCount: number;
+  attributedCredits: number;
+  activeCredits: number;
+  overheadCredits: number;
+  snowflakeCostUsd: number;
+  snowflakeCost30dUsd: number;
+  awsCostUsd: number;
+  fullyLoadedCostUsd: number;
+  views: number;
+  snowflakeCostPerView: number | null;
+  fullyLoadedCostPerView: number | null;
+}
+
+/** GET /costs/assumptions as viewers see it (no per-report example). */
+export interface ViewerCostAssumptions {
+  snapshotIdx: number;
+  snapshotDate: string;
+  params: CostParameters;
+}
+export interface CostAssumptions extends ViewerCostAssumptions {
+  /** null when nothing in scope has known cost and views at this snapshot. */
+  example: CostWorkedExample | null;
+}
+
+/** One snapshot of GET /costs/projection (/sql/10 COST_PROJECTION). */
+export interface CostProjectionPoint {
+  snapshotIdx: number;
+  snapshotDate: string;
+  /** Σ attributed Snowflake cost that day. After currentIdx: not yet replayed (show faded). */
+  actualCostUsd: number;
+  replayed: boolean;
+  /** The fitted line at this snapshot; null when the fit has one point. */
+  trendCostUsd: number | null;
+  /** trend ± 1.96σ, only after currentIdx (and with 3+ points in the fit). */
+  forecastLowUsd: number | null;
+  forecastHighUsd: number | null;
+}
+
+/** Money figures of GET /costs/projection: scope-wide aggregates, visible to every role. */
+export interface CostProjectionTotals {
+  points: CostProjectionPoint[];
+  fit: {
+    pointCount: number;
+    slopeUsdPerDay: number | null;
+    interceptUsd: number | null;
+    residualSdUsd: number | null;
+  };
+  costToDateUsd: number;
+  runRateUsdPerDay: number | null;
+  /** cost to date + run rate × remaining days. */
+  projectedMonthEndUsd: number | null;
+}
+
+/** GET /costs/projection: linear trend over snapshots 0..N of the caller's scope (/sql/10). */
+export interface CostProjection {
+  currentIdx: number;
+  daysElapsed: number;
+  remainingDays: number;
+  daysPerMonth: number;
+  /** Snapshots after N the forecast is scored on; mape is null when 0. */
+  holdoutCount: number;
+  /** Mean absolute percentage error (a fraction) of the trend over the holdout. */
+  mape: number | null;
+  quarantinedSnapshotCount: number;
+  totals: CostProjectionTotals;
+}
+
 export interface OwnerOverrideRequest {
   /** New owner (trimmed, lowercased); null marks the report orphaned. */
   ownerEmail: string | null;

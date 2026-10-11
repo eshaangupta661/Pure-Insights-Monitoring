@@ -12,6 +12,9 @@ export const REPLAY_KEY = ['replay'] as const;
 export const TREND_KEY = ['overview', 'trend'] as const;
 /** Orphaned and zombie lists describe the replay's snapshot, so they refetch on every tick. */
 export const ANOMALIES_KEY = ['costs', 'anomalies'] as const;
+/** Forecast and worked example are for the replay's snapshot, so they refetch on every tick. */
+export const PROJECTION_KEY = ['costs', 'projection'] as const;
+export const ASSUMPTIONS_KEY = ['costs', 'assumptions'] as const;
 
 export function useOverview() {
   return useQuery({ queryKey: OVERVIEW_KEY, queryFn: () => api<OverviewKpis>('/overview') });

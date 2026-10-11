@@ -3,6 +3,8 @@ import {
   chargebackQuerySchema,
   chargebackRowSchema,
   chargebackTotalsSchema,
+  costAssumptionsSchema,
+  costProjectionSchema,
   costReportsQuerySchema,
   costReportsTotalsSchema,
   costRowSchema,
@@ -12,6 +14,7 @@ import {
   unitEconomicsTotalsSchema,
   viewerAnomalyReportSchema,
   viewerChargebackRowSchema,
+  viewerCostAssumptionsSchema,
   viewerCostRowSchema,
   viewerUnitEconomicsRowSchema,
 } from '../api/schemas.js';
@@ -20,6 +23,8 @@ import { defineRoute } from '../http/route.js';
 import { orderByFor, type SortSpec } from '../http/sort.js';
 import {
   getAnomalies,
+  getCostAssumptions,
+  getCostProjection,
   listChargeback,
   listCostReports,
   listUnitEconomics,
@@ -160,5 +165,40 @@ export const costRoutes = [
         query,
       );
     },
+  }),
+
+  defineRoute({
+    method: 'get',
+    path: '/costs/assumptions',
+    tag: 'costs',
+    summary: 'How cost is calculated: PARAMS and a worked example (/sql/00, 03–05)',
+    description:
+      'The PARAMS values the suite ran with (credit price, simulated overhead rate, days per ' +
+      'month, low-views threshold, …) plus a worked example: the most expensive report in the ' +
+      'caller’s scope at the replay’s snapshot, followed from one warehouse-hour allocation ' +
+      '(/sql/03) to its daily and 30-day cost (/sql/04–05). `example` is null when nothing in ' +
+      'scope has known cost and views. Viewers get the parameters only (no per-report example).',
+    access: 'authenticated',
+    response: costAssumptionsSchema,
+    viewerResponse: viewerCostAssumptionsSchema,
+    handler: ({ deps, scope }) => getCostAssumptions(deps.warehouse, scope, deps.clock.tick()),
+  }),
+
+  defineRoute({
+    method: 'get',
+    path: '/costs/projection',
+    tag: 'costs',
+    summary: 'Daily Snowflake cost with a linear trend forecast (/sql/10)',
+    description:
+      'Daily attributed Snowflake cost over the caller’s scope (the portfolio, or an owner’s ' +
+      'own reports, filtered in SQL). A least-squares line is fitted to snapshots 0..N (N = ' +
+      '`currentIdx`, the replay’s snapshot) and forecast for N+1..last with a ±1.96σ band. ' +
+      'Points after N are actuals not yet replayed (show them faded); `mape` scores the ' +
+      'forecast against them. `projectedMonthEndUsd` = cost to date + run rate × remaining ' +
+      'days of a `daysPerMonth` month. Aggregates only, so viewers get the same body.',
+    access: 'authenticated',
+    response: costProjectionSchema,
+    viewerResponse: costProjectionSchema,
+    handler: ({ deps, scope }) => getCostProjection(deps.warehouse, scope, deps.clock.tick()),
   }),
 ];
