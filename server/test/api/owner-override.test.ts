@@ -87,6 +87,7 @@ describe('owner override (admin) and audit log', () => {
     const d: ReportDetail = res.body;
     expect(d).toMatchObject({
       reportId: orphan,
+      snapshotOwner: null, // the snapshot's own owner is unchanged; the override is separate
       currentOwner: OWNER,
       isOrphaned: false,
       isOverridden: true,
@@ -152,7 +153,12 @@ describe('owner override (admin) and audit log', () => {
   it('null orphans a report; a second PATCH replaces (not duplicates) the override', async () => {
     const res = await patch(admin, ownedByUser3, { ownerEmail: null });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ currentOwner: null, isOrphaned: true, isOverridden: true });
+    expect(res.body).toMatchObject({
+      snapshotOwner: OWNER,
+      currentOwner: null,
+      isOrphaned: true, // the override wins over the snapshot's owner
+      isOverridden: true,
+    });
     expect((await owner.get('/api/v1/reports')).body.total).toBe(11); // 12 − 1
     expect((await owner.get(`/api/v1/reports/${ownedByUser3}`)).status).toBe(404);
 

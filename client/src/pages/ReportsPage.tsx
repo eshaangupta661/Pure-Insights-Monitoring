@@ -231,7 +231,7 @@ export default function ReportsPage() {
                         onSort={onSort}
                       />
                       <th scope="col" className="py-2 text-left font-medium">
-                        Owner
+                        Owner at snapshot
                       </th>
                       <SortHeader
                         label="Refresh"
@@ -283,7 +283,14 @@ export default function ReportsPage() {
                           <span className="text-gray-500">{r.reportId}</span>
                         </td>
                         <td className="py-2 pr-3 text-gray-700">
-                          {r.currentOwner ?? <span className="text-gray-500 italic">No owner</span>}
+                          {r.snapshotOwner ?? (
+                            <span className="text-gray-500 italic">No owner</span>
+                          )}
+                          {r.isOverridden && (
+                            <span className="block text-xs text-gray-500">
+                              Current owner (override): {r.currentOwner ?? 'no owner'}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 pr-3">
                           <RefreshBadge status={r.refreshStatus} />

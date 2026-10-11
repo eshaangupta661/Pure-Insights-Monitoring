@@ -169,8 +169,14 @@ export interface OverviewTrend {
 export interface ViewerReportSummary {
   reportId: string;
   reportName: string;
-  /** Effective owner (latest snapshot or admin override); null = orphaned. */
+  /** The owner at this snapshot (REPORT_SNAPSHOTS.owner_email); null = orphaned then. */
+  snapshotOwner: string | null;
+  /**
+   * Effective owner used for scoping: the admin override if one exists, else the latest
+   * snapshot's owner. Show it only when `isOverridden`; otherwise it is a future snapshot's owner.
+   */
   currentOwner: string | null;
+  /** No owner at this snapshot: the override's owner when overridden, else `snapshotOwner`. */
   isOrphaned: boolean;
   isOverridden: boolean;
   snapshotIdx: number;

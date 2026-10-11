@@ -45,13 +45,17 @@ const STATUS_FILL: Record<RefreshStatus, string> = {
   TIMED_OUT: 'bg-red-300',
 };
 
-/** Consecutive snapshots with the same owner collapse into one run, newest first. */
-function ownerRuns(history: (string | null)[]) {
-  const runs: { owner: string | null; from: number; to: number }[] = [];
+/**
+ * Consecutive snapshots with the same owner collapse into one run, newest first. A run never
+ * spans the replay's snapshot, so runs the replay hasn't reached can be shown apart.
+ */
+function ownerRuns(history: (string | null)[], currentIdx: number) {
+  const runs: { owner: string | null; from: number; to: number; replayed: boolean }[] = [];
   history.forEach((owner, i) => {
+    const replayed = i <= currentIdx;
     const last = runs[runs.length - 1];
-    if (last && last.owner === owner) last.to = i;
-    else runs.push({ owner, from: i, to: i });
+    if (last && last.owner === owner && last.replayed === replayed) last.to = i;
+    else runs.push({ owner, from: i, to: i, replayed });
   });
   return runs.reverse();
 }
@@ -144,14 +148,19 @@ function DrawerBody({ report }: { report: Detail }) {
     <div className="px-5 pb-6">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pb-4 text-sm">
         <div>
-          <dt className="text-xs text-gray-500">Owner</dt>
+          <dt className="text-xs text-gray-500">Owner at snapshot {report.snapshotIdx + 1}</dt>
           <dd className="text-gray-900">
-            {report.currentOwner ?? <span className="italic">No owner</span>}
-            {report.isOverridden && (
-              <span className="ml-1 text-xs text-gray-500">(assigned by an admin)</span>
-            )}
+            {report.snapshotOwner ?? <span className="italic">No owner</span>}
           </dd>
         </div>
+        {report.isOverridden && (
+          <div>
+            <dt className="text-xs text-gray-500">Current owner (override)</dt>
+            <dd className="text-gray-900">
+              {report.currentOwner ?? <span className="italic">No owner</span>}
+            </dd>
+          </div>
+        )}
         <div>
           <dt className="text-xs text-gray-500">Refresh</dt>
           <dd>
@@ -246,23 +255,31 @@ function DrawerBody({ report }: { report: Detail }) {
 
       <Section title="Owner history">
         <ol className="space-y-1 text-sm">
-          {ownerRuns(report.ownerHistory).map((run) => (
-            <li key={run.from} className="flex justify-between gap-3">
+          {ownerRuns(report.ownerHistory, report.snapshotIdx).map((run) => (
+            <li
+              key={run.from}
+              className={`flex justify-between gap-3 ${run.replayed ? '' : 'opacity-40'}`}
+            >
               <span className={run.owner ? 'text-gray-800' : 'text-gray-500 italic'}>
                 {run.owner ?? 'No owner'}
+                {run.from <= report.snapshotIdx && report.snapshotIdx <= run.to && (
+                  <span className="ml-1 text-xs text-gray-500 not-italic">(now)</span>
+                )}
               </span>
               <span className="shrink-0 text-xs text-gray-500 tabular-nums">
                 {run.from === run.to
                   ? `Snapshot ${run.from + 1}`
                   : `Snapshots ${run.from + 1}–${run.to + 1}`}
+                {!run.replayed && ' · not yet replayed'}
               </span>
             </li>
           ))}
         </ol>
         {report.override && (
           <p className="mt-2 text-xs text-gray-500">
-            Current owner set by {report.override.setBy}
-            {report.override.reason ? `: ${report.override.reason}` : ''}.
+            Current owner (override) set by {report.override.setBy}
+            {report.override.reason ? `: ${report.override.reason}` : ''}. Access and alerts follow
+            the override; the history above is unchanged.
           </p>
         )}
       </Section>

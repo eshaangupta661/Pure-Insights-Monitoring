@@ -59,7 +59,7 @@ describe('reports API (admin)', () => {
 
       const orphaned = await admin.get('/api/v1/reports?orphaned=true&pageSize=100');
       expect(orphaned.body.total).toBe(14);
-      expect(orphaned.body.items.every((r: ReportSummary) => r.currentOwner === null)).toBe(true);
+      expect(orphaned.body.items.every((r: ReportSummary) => r.snapshotOwner === null)).toBe(true);
       expect((await admin.get('/api/v1/reports?orphaned=false')).body.total).toBe(86);
 
       const slow = await admin.get('/api/v1/reports?slow=true&pageSize=100');
@@ -89,6 +89,61 @@ describe('reports API (admin)', () => {
       try {
         const res = await admin.get('/api/v1/reports?pageSize=1');
         expect(res.body.items[0]).toMatchObject({ snapshotIdx: 0, snapshotDate: '2026-09-21' });
+      } finally {
+        t.clock.set(LATEST_TICK);
+      }
+    });
+
+    it('shows the owner at the replay snapshot, not the latest snapshot’s owner', async () => {
+      const N = 5;
+      // A report owned by someone at N who is not its latest (snapshot 20) owner.
+      const [row] = await t.sql<{
+        report_id: string;
+        owner_n: string;
+        owner_latest: string | null;
+      }>(
+        `SELECT n.report_id, n.owner_email AS owner_n, l.owner_email AS owner_latest
+         FROM REPORT_SNAPSHOTS n
+         JOIN REPORT_SNAPSHOTS l ON l.report_id = n.report_id AND l.snapshot_idx = ${LATEST_TICK}
+         WHERE n.snapshot_idx = ${N} AND n.owner_email IS NOT NULL
+           AND n.owner_email IS DISTINCT FROM l.owner_email
+         ORDER BY n.report_id LIMIT 1`,
+      );
+      const { report_id: id, owner_n: ownerAtN, owner_latest: ownerLatest } = row!;
+      const orphanedAtN = (
+        await t.sql<{ n: number }>(
+          `SELECT count(*)::INTEGER AS n FROM REPORT_SNAPSHOTS
+           WHERE snapshot_idx = ${N} AND owner_email IS NULL`,
+        )
+      )[0]!.n;
+
+      t.clock.set(N);
+      try {
+        const expected = {
+          reportId: id,
+          snapshotIdx: N,
+          snapshotOwner: ownerAtN,
+          currentOwner: ownerLatest,
+          isOrphaned: false,
+          isOverridden: false,
+        };
+        const d: ReportDetail = (await admin.get(`/api/v1/reports/${id}`)).body;
+        expect(d).toMatchObject(expected);
+        expect(d.history[N]!.ownerEmail).toBe(ownerAtN);
+
+        const list = await admin.get(`/api/v1/reports?q=${encodeURIComponent(id)}`);
+        expect(list.body.items).toEqual([expect.objectContaining(expected)]);
+
+        // Search and the "no owner" filter follow the owner shown at N.
+        const byOwner = await admin.get(
+          `/api/v1/reports?q=${encodeURIComponent(ownerAtN)}&pageSize=100`,
+        );
+        expect(byOwner.body.items.map((r: ReportSummary) => r.reportId)).toContain(id);
+        const orphaned = await admin.get('/api/v1/reports?orphaned=true&pageSize=100');
+        expect(orphaned.body.total).toBe(orphanedAtN);
+        expect(orphaned.body.items.every((r: ReportSummary) => r.snapshotOwner === null)).toBe(
+          true,
+        );
       } finally {
         t.clock.set(LATEST_TICK);
       }

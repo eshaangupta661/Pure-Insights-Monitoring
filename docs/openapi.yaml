@@ -309,11 +309,17 @@ components:
           type: string
         reportName:
           type: string
+        snapshotOwner:
+          type: string
+          nullable: true
+          description: Owner at the replay snapshot (null = no owner then)
         currentOwner:
           type: string
           nullable: true
+          description: "Effective owner used for scoping: the admin override if any, else the latest snapshot’s owner"
         isOrphaned:
           type: boolean
+          description: No owner at this snapshot (the override wins when one exists)
         isOverridden:
           type: boolean
         snapshotIdx:
@@ -339,6 +345,7 @@ components:
       required:
         - reportId
         - reportName
+        - snapshotOwner
         - currentOwner
         - isOrphaned
         - isOverridden
@@ -1443,7 +1450,7 @@ paths:
         - schema:
             type: string
             maxLength: 100
-            description: Case-insensitive substring of report id, name or current owner
+            description: Case-insensitive substring of report id, name, owner at this snapshot or override owner
           required: false
           name: q
           in: query
@@ -1457,7 +1464,7 @@ paths:
             enum: &a1
               - "true"
               - "false"
-            description: true = current owner is NULL
+            description: true = no owner at this snapshot (the override wins)
           required: false
           name: orphaned
           in: query

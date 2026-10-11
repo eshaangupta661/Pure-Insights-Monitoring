@@ -1,9 +1,10 @@
 /*
  * Reports at the replay's current snapshot, scoped in SQL.
  *
- * Owners come from REPORT_CURRENT_OWNER (live: admin overrides apply). Cost comes from the
- * results stored at ingest (SQL_RESULTS), which is fine because cost doesn't depend on ownership;
- * their current_owner columns are never read (frozen at ingest).
+ * Two owners per row. `snapshotOwner` is the owner at the replay's snapshot (what the UI shows);
+ * `currentOwner` comes from REPORT_CURRENT_OWNER (live: admin overrides apply) and is what scoping
+ * filters on. Cost comes from the results stored at ingest (SQL_RESULTS), which is fine because
+ * cost doesn't depend on ownership; their current_owner columns are never read (frozen at ingest).
  */
 import type { DuckDBValue } from '@duckdb/node-api';
 import type {
@@ -22,12 +23,16 @@ import { paginate } from '../http/pagination.js';
 import { RESULTS_SCHEMA } from '../sql/runner.js';
 import { isoTimestampSql } from './audit.js';
 
+/** The owner shown at the replay's snapshot: an admin override wins, else that snapshot's owner. */
+const OWNER_AT_SNAPSHOT = 'CASE WHEN o.is_overridden THEN o.current_owner ELSE s.owner_email END';
+
 const SUMMARY_SELECT = `
   SELECT
     s.report_id                    AS "reportId",
     s.report_name                  AS "reportName",
+    s.owner_email                  AS "snapshotOwner",
     o.current_owner                AS "currentOwner",
-    o.is_orphaned                  AS "isOrphaned",
+    (${OWNER_AT_SNAPSHOT}) IS NULL AS "isOrphaned",
     o.is_overridden                AS "isOverridden",
     s.snapshot_idx                 AS "snapshotIdx",
     s.snapshot_date                AS "snapshotDate",
@@ -68,7 +73,8 @@ export async function listReports(
     const n = `$${params.length}`;
     where.push(
       `(contains(lower(s.report_id), ${n}) OR contains(lower(s.report_name), ${n})` +
-        ` OR contains(COALESCE(o.current_owner, ''), ${n}))`,
+        ` OR contains(COALESCE(s.owner_email, ''), ${n})` +
+        ` OR (o.is_overridden AND contains(COALESCE(o.current_owner, ''), ${n})))`,
     );
   }
   if (query.status) {
@@ -76,7 +82,7 @@ export async function listReports(
     where.push(`s.last_refresh_status = $${params.length}`);
   }
   if (query.orphaned !== undefined)
-    where.push(query.orphaned ? 'o.is_orphaned' : 'NOT o.is_orphaned');
+    where.push(`(${OWNER_AT_SNAPSHOT}) IS ${query.orphaned ? '' : 'NOT '}NULL`);
   if (query.slow !== undefined) {
     params.push(config.LATENCY_WARNING_SEC);
     where.push(`${query.slow ? '' : 'NOT '}(s.avg_load_time_sec > $${params.length})`);

@@ -67,7 +67,8 @@ fails that test.
 
 ### Owner scoping (in SQL)
 
-An owner sees only reports whose **current owner** is their email. "Current owner" is the
+An owner sees only reports whose **current owner** is their email, wherever the replay is: at
+an earlier snapshot they see the same reports, and `snapshotOwner` may then show someone else. "Current owner" is the
 latest snapshot's owner, unless an admin override exists (view `REPORT_CURRENT_OWNER`,
 `sql/01_schema.sql`). The filter is part of every query (`WHERE o.current_owner = $n`, with the
 email as a bound parameter), including the `COUNT(*)` behind `total`. Nothing is filtered after
@@ -146,10 +147,18 @@ snapshots.
   snapshot, over the caller's scope), `currentIdx` (the replay's snapshot) and `latency` (a
   load-time histogram of the current snapshot; bucket edges are `LATENCY_BUCKET_EDGES_SEC`).
 - `GET /reports?q=&status=&orphaned=&slow=&sort=&order=&page=&pageSize=`
-  - `q`: substring of id, name or current owner.
+  - `q`: substring of id, name, owner at this snapshot, or override owner.
   - `status`: `SUCCESS | FAILED | TIMED_OUT | UNKNOWN`.
-  - `orphaned` / `slow`: `true | false`. Slow means > 15 s at this snapshot.
+  - `orphaned` / `slow`: `true | false`. Orphaned means no owner at this snapshot (an override
+    wins); slow means > 15 s at this snapshot.
   - `sort`: `reportId | loadTime | views | status`.
+- Each row carries two owners. `snapshotOwner` is the owner **at the replay's snapshot**
+  (`REPORT_SNAPSHOTS.owner_email`), which is what the UI shows. `currentOwner` is the effective
+  owner that scoping uses (`REPORT_CURRENT_OWNER`: the override, else the latest snapshot's
+  owner). Without an override it belongs to a snapshot the replay may not have reached yet, so
+  the UI shows it only when `isOverridden`, labelled "Current owner (override)". `isOrphaned`
+  is true when there is no owner at this snapshot: the override's owner if there is one,
+  otherwise `snapshotOwner`.
 - `GET /reports/:id` returns the summary plus the 20-snapshot `history` (that snapshot's owner,
   status, latency, views, DQ flags and cost), `ownerHistory`, any `override`, and the report's
   `cost` over all snapshots.

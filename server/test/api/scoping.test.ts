@@ -49,6 +49,20 @@ describe('owner scoping (user_3, who owns 11 reports)', () => {
     expect(items.every((r) => typeof r.attributedCostUsd === 'number')).toBe(true);
   });
 
+  it('scope stays on the current owner when the replay is at an earlier snapshot', async () => {
+    t.clock.set(5);
+    try {
+      const res = await owner.get('/api/v1/reports?pageSize=100');
+      const items: ReportSummary[] = res.body.items;
+      expect(items.map((r) => r.reportId)).toEqual(mine);
+      expect(items.every((r) => r.currentOwner === OWNER && r.snapshotIdx === 5)).toBe(true);
+      // The displayed owner is snapshot 6's, which for some of their reports was someone else.
+      expect(items.some((r) => r.snapshotOwner !== OWNER)).toBe(true);
+    } finally {
+      t.clock.set(config.SNAPSHOT_COUNT - 1);
+    }
+  });
+
   it('the filter runs in SQL: the COUNT query itself is scoped and binds the email', async () => {
     const seen: { sql: string; params: DuckDBValue[] }[] = [];
     const original = t.warehouse.query.bind(t.warehouse);

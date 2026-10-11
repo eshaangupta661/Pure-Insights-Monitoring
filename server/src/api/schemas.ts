@@ -307,14 +307,14 @@ export const reportIdParamsSchema = z.object({
 export const REPORT_SORTS = ['reportId', 'loadTime', 'views', 'status'] as const;
 
 export const reportsQuerySchema = pageQuerySchema.extend({
-  q: z
-    .string()
-    .trim()
-    .max(100)
-    .optional()
-    .openapi({ description: 'Case-insensitive substring of report id, name or current owner' }),
+  q: z.string().trim().max(100).optional().openapi({
+    description:
+      'Case-insensitive substring of report id, name, owner at this snapshot or override owner',
+  }),
   status: refreshStatusSchema.optional(),
-  orphaned: booleanQuery.optional().openapi({ description: 'true = current owner is NULL' }),
+  orphaned: booleanQuery
+    .optional()
+    .openapi({ description: 'true = no owner at this snapshot (the override wins)' }),
   slow: booleanQuery
     .optional()
     .openapi({ description: `true = load time > ${config.LATENCY_WARNING_SEC}s at this snapshot` }),
@@ -327,8 +327,17 @@ export const viewerReportSummarySchema = z
   .object({
     reportId: z.string(),
     reportName: z.string(),
-    currentOwner: z.string().nullable(),
-    isOrphaned: z.boolean(),
+    snapshotOwner: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Owner at the replay snapshot (null = no owner then)' }),
+    currentOwner: z.string().nullable().openapi({
+      description:
+        'Effective owner used for scoping: the admin override if any, else the latest snapshot’s owner',
+    }),
+    isOrphaned: z.boolean().openapi({
+      description: 'No owner at this snapshot (the override wins when one exists)',
+    }),
     isOverridden: z.boolean(),
     snapshotIdx: z.number().int(),
     snapshotDate: isoDate,
