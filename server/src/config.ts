@@ -92,7 +92,7 @@ export const config = {
   LATENCY_CRITICAL_SEC: 30,
   /** Lower edges (s) of the Overview latency histogram; the first bucket starts at 0. */
   LATENCY_BUCKET_EDGES_SEC: [5, 10, 15, 20, 30, 45],
-  /** Days a snapshot's daily spend is projected over for a zombie report's estimated savings. */
+  /** Days a zombie snapshot's daily spend is projected over for its estimated savings (/sql/06). */
   SAVINGS_DAYS_PER_MONTH: 30,
   COST_ROBUST_Z: 3.5,
   COST_LOW_VIEWS: 50,

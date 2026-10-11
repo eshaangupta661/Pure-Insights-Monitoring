@@ -6,11 +6,17 @@
 -- Outputs     : VIEW ANOMALY_COST_PER_VIEW (snapshots whose fully-loaded cost per view is an outlier)
 --                 report_id, report_name, snapshot_idx, snapshot_date, views,
 --                 fully_loaded_cost_per_view, robust_z, direction ('HIGH' | 'LOW')
---               VIEW ANOMALY_ZOMBIE_REPORTS (reports still spending with nobody owning or using them)
---                 report_id, report_name, current_owner, latest_snapshot_idx, latest_views,
---                 latest_attributed_credits, latest_snowflake_cost_usd,
---                 total_attributed_credits, total_attributed_cost_usd,
---                 reason ('ORPHANED' | 'LOW_USAGE' | 'BOTH')
+--               VIEW ANOMALY_ORPHANED_REPORTS (one row per report × snapshot with no owner then;
+--               recommended action: reassign)
+--                 report_id, report_name, snapshot_idx, snapshot_date, current_owner,
+--                 snapshot_owner, is_overridden, views, attributed_credits, snowflake_cost_usd,
+--                 is_zombie, total_attributed_credits, total_attributed_cost_usd
+--               VIEW ANOMALY_ZOMBIE_REPORTS (one row per report × snapshot with almost no views;
+--               recommended action: retire)
+--                 report_id, report_name, snapshot_idx, snapshot_date, current_owner,
+--                 is_orphaned, views, attributed_credits, snowflake_cost_usd,
+--                 estimated_monthly_savings_credits, estimated_monthly_savings_usd,
+--                 total_attributed_credits, total_attributed_cost_usd
 --               VIEW ANOMALY_AWS_VIEWS_MISMATCH (DQ04 rows: AWS hosting out of line with views)
 --                 row_idx, report_id, report_name, snapshot_idx, views, aws_cost_usd,
 --                 aws_cost_per_view, aws_log_z, reason ('HARD_RULE' | 'ROBUST_Z' | 'BOTH')
@@ -21,10 +27,19 @@
 --     x = ln(fully_loaded_cost_per_view), median and MAD pooled over every snapshot with a known,
 --     positive unit cost (zero-view and quarantined snapshots are NULL and skipped). Outlier when
 --     |z| > cost_robust_z. The log makes the right-skewed costs roughly symmetric.
---   * Zombie report: in the latest snapshot the report still spends credits
---     (attributed_credits > 0) AND either nobody owns it (current_owner IS NULL) or almost nobody
---     uses it (views < cost_low_views). The definition looks only at the latest snapshot because
---     views in this dataset swing between snapshots, so no report stays low for long.
+--   * Orphaned and zombie are two separate problems with different fixes, so they are two views.
+--     Both have one row per report × snapshot; the API reads the replay's current snapshot.
+--       Orphaned: nobody owns the report at that snapshot, whatever its usage. Fix: reassign.
+--         The owner at a snapshot is the admin override when one exists (it wins at every
+--         snapshot, even when NULL), else that snapshot's owner_email.
+--       Zombie: almost nobody uses it (views < cost_low_views), owned or not. Fix: retire.
+--         is_orphaned marks a zombie that is also unowned.
+--   * Estimated savings come only from zombies (retiring a report stops its spend; reassigning
+--     an orphan doesn't): the snapshot's attributed credits (one snapshot = one day) ×
+--     savings_days_per_month, priced at credit_price_usd. AWS hosting is excluded. A zombie
+--     whose credits were quarantined (DQ02) has unknown cost, so NULL savings, not 0.
+--   * Both views read REPORT_CURRENT_OWNER, so they are live (follow overrides); the API reads
+--     them directly rather than the copies stored at ingest.
 --   * AWS mismatch reuses DQ04 from 02 so the rule is defined once.
 --   * Negative credits come from QUARANTINE.raw_value (the pointer kept by ingest), so this
 --     file never reads the uncleaned credits column.
@@ -64,40 +79,50 @@ CROSS JOIN PARAMS p
 WHERE ABS(s.robust_z) > p.cost_robust_z
 ORDER BY ABS(s.robust_z) DESC, s.report_id, s.snapshot_idx;
 
-CREATE OR REPLACE VIEW ANOMALY_ZOMBIE_REPORTS AS
-WITH latest AS (
-    SELECT *
-    FROM UNIT_ECONOMICS_SNAPSHOT
-    WHERE snapshot_idx = (SELECT MAX(snapshot_idx) FROM REPORT_SNAPSHOTS)
-),
-flagged AS (
-    SELECT
-        l.*,
-        o.current_owner,
-        o.is_orphaned,
-        l.views < p.cost_low_views   AS is_low_usage
-    FROM latest l
-    JOIN REPORT_CURRENT_OWNER o ON o.report_id = l.report_id
-    CROSS JOIN PARAMS p
-    WHERE l.attributed_credits > 0
-)
+CREATE OR REPLACE VIEW ANOMALY_ORPHANED_REPORTS AS
 SELECT
-    f.report_id,
-    f.report_name,
-    f.current_owner,
-    f.snapshot_idx                 AS latest_snapshot_idx,
-    f.views                        AS latest_views,
-    f.attributed_credits           AS latest_attributed_credits,
-    f.snowflake_cost_usd           AS latest_snowflake_cost_usd,
+    u.report_id,
+    u.report_name,
+    u.snapshot_idx,
+    u.snapshot_date,
+    o.current_owner,
+    u.owner_email                  AS snapshot_owner,
+    o.is_overridden,
+    u.views,
+    u.attributed_credits,
+    u.snowflake_cost_usd,
+    u.views < p.cost_low_views     AS is_zombie,
     a.attributed_credits           AS total_attributed_credits,
-    a.attributed_cost_usd          AS total_attributed_cost_usd,
-    CASE WHEN f.is_orphaned AND f.is_low_usage THEN 'BOTH'
-         WHEN f.is_orphaned THEN 'ORPHANED'
-         ELSE 'LOW_USAGE' END      AS reason
-FROM flagged f
-JOIN REPORT_ATTRIBUTION a ON a.report_id = f.report_id
-WHERE f.is_orphaned OR f.is_low_usage
-ORDER BY a.attributed_credits DESC, f.report_id;
+    a.attributed_cost_usd          AS total_attributed_cost_usd
+FROM UNIT_ECONOMICS_SNAPSHOT u
+JOIN REPORT_CURRENT_OWNER o ON o.report_id = u.report_id
+JOIN REPORT_ATTRIBUTION a ON a.report_id = u.report_id
+CROSS JOIN PARAMS p
+WHERE CASE WHEN o.is_overridden THEN o.current_owner ELSE u.owner_email END IS NULL
+ORDER BY u.snapshot_idx, u.snowflake_cost_usd DESC NULLS LAST, u.report_id;
+
+CREATE OR REPLACE VIEW ANOMALY_ZOMBIE_REPORTS AS
+SELECT
+    u.report_id,
+    u.report_name,
+    u.snapshot_idx,
+    u.snapshot_date,
+    o.current_owner,
+    CASE WHEN o.is_overridden THEN o.current_owner ELSE u.owner_email END IS NULL
+                                                         AS is_orphaned,
+    u.views,
+    u.attributed_credits,
+    u.snowflake_cost_usd,
+    u.attributed_credits * p.savings_days_per_month      AS estimated_monthly_savings_credits,
+    u.snowflake_cost_usd * p.savings_days_per_month      AS estimated_monthly_savings_usd,
+    a.attributed_credits                                 AS total_attributed_credits,
+    a.attributed_cost_usd                                AS total_attributed_cost_usd
+FROM UNIT_ECONOMICS_SNAPSHOT u
+JOIN REPORT_CURRENT_OWNER o ON o.report_id = u.report_id
+JOIN REPORT_ATTRIBUTION a ON a.report_id = u.report_id
+CROSS JOIN PARAMS p
+WHERE u.views < p.cost_low_views
+ORDER BY u.snapshot_idx, estimated_monthly_savings_usd DESC NULLS LAST, u.report_id;
 
 CREATE OR REPLACE VIEW ANOMALY_AWS_VIEWS_MISMATCH AS
 SELECT

@@ -62,8 +62,16 @@ describe('viewer never receives per-report cost fields', () => {
     expect(asViewer.body.items).toHaveLength(100);
     expect(asViewer.body.items[0]).toHaveProperty('loadTimeSec');
     const anomalies = (await viewer.get('/api/v1/costs/anomalies')).body;
-    expect(anomalies.zombies).toHaveLength(17);
-    expect(anomalies.zombies[0]).toHaveProperty('reason');
+    expect(anomalies.orphaned).toHaveLength(14);
+    expect(anomalies.zombies).toHaveLength(5);
+    expect(anomalies.zombies[0]).toHaveProperty('isOrphaned');
+    expect(anomalies.zombies[0]).not.toHaveProperty('estimatedMonthlySavingsUsd');
+    // Viewer totals are counts only: no savings, even as an aggregate.
+    expect(Object.keys(anomalies.totals).sort()).toEqual([
+      'orphanedCount',
+      'orphanedZombieCount',
+      'zombieCount',
+    ]);
 
     for (const path of requests) {
       const asAdmin = await admin.get(`/api/v1${path}`);
@@ -74,9 +82,8 @@ describe('viewer never receives per-report cost fields', () => {
   });
 
   it('anomalies: viewers get report/snapshot order (no cost ranks); admins get severity order', async () => {
-    type Row = { reportId: string; snapshotIdx?: number; latestSnapshotIdx?: number };
-    const key = (r: Row) =>
-      `${r.reportId}|${String(r.snapshotIdx ?? r.latestSnapshotIdx ?? 0).padStart(2, '0')}`;
+    type Row = { reportId: string; snapshotIdx?: number };
+    const key = (r: Row) => `${r.reportId}|${String(r.snapshotIdx ?? 0).padStart(2, '0')}`;
     const isNeutral = (rows: Row[]) => {
       const keys = rows.map(key);
       return JSON.stringify(keys) === JSON.stringify([...keys].sort());
@@ -85,6 +92,7 @@ describe('viewer never receives per-report cost fields', () => {
     const a = (await admin.get('/api/v1/costs/anomalies')).body as Record<string, Row[]>;
     for (const section of [
       'perViewOutliers',
+      'orphaned',
       'zombies',
       'awsViewsMismatch',
       'quarantinedSnapshots',

@@ -8,7 +8,7 @@ import type {
 import type { Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../../src/config.js';
-import { buildTestApp, type TestApp } from '../helpers/app.js';
+import { buildTestApp, LATEST_TICK, type TestApp } from '../helpers/app.js';
 import { loginAs } from '../helpers/auth.js';
 
 const sum = (xs: readonly (number | null)[]) => xs.reduce<number>((s, x) => s + (x ?? 0), 0);
@@ -102,27 +102,79 @@ describe('costs API', () => {
   });
 
   describe('GET /costs/anomalies', () => {
-    it('matches the /sql/06 views: 17 zombies, 30 AWS mismatches, 24 quarantined', async () => {
+    it('matches the /sql/06 views: 14 orphaned, 5 zombies, 30 AWS mismatches, 24 quarantined', async () => {
       const a: AnomalyReport = (await admin.get('/api/v1/costs/anomalies')).body;
       const [stored] = await t.sql<{ n: number }>(
         'SELECT count(*)::INTEGER AS n FROM SQL_RESULTS.ANOMALY_COST_PER_VIEW',
       );
+      expect(a.snapshotIdx).toBe(LATEST_TICK);
       expect(a.perViewOutliers).toHaveLength(stored!.n);
-      expect(a.zombies).toHaveLength(17);
+      expect(a.orphaned).toHaveLength(14);
+      expect(a.zombies).toHaveLength(5);
       expect(a.awsViewsMismatch).toHaveLength(30);
       expect(a.quarantinedSnapshots).toHaveLength(24);
       expect(a.quarantinedSnapshots.every((q) => q.rawCredits < 0)).toBe(true);
-      const orphanZombies = a.zombies.filter((z) => z.reason !== 'LOW_USAGE');
-      expect(orphanZombies.every((z) => z.currentOwner === null)).toBe(true);
+      expect(
+        a.orphaned.every((o) => o.currentOwner === null && o.snapshotIdx === LATEST_TICK),
+      ).toBe(true);
+      expect(a.zombies.every((z) => z.views < config.COST_LOW_VIEWS)).toBe(true);
       for (const z of a.zombies) {
         expect(z.estimatedMonthlySavingsCredits).toBeCloseTo(
-          z.latestAttributedCredits * config.SAVINGS_DAYS_PER_MONTH,
+          z.attributedCredits! * config.SAVINGS_DAYS_PER_MONTH,
           9,
         );
         expect(z.estimatedMonthlySavingsUsd).toBeCloseTo(
-          z.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
+          z.snowflakeCostUsd! * config.SAVINGS_DAYS_PER_MONTH,
           9,
         );
+      }
+    });
+
+    it('savings come only from zombies; orphans carry none; totals are the sums', async () => {
+      const a: AnomalyReport = (await admin.get('/api/v1/costs/anomalies')).body;
+      for (const o of a.orphaned) expect(o).not.toHaveProperty('estimatedMonthlySavingsUsd');
+      const zombieIds = new Set(a.zombies.map((z) => z.reportId));
+      // An orphan is flagged as a zombie exactly when it is in the zombie list, and vice versa.
+      for (const o of a.orphaned) expect(o.isZombie).toBe(zombieIds.has(o.reportId));
+      const orphanIds = new Set(a.orphaned.map((o) => o.reportId));
+      for (const z of a.zombies) expect(z.isOrphaned).toBe(orphanIds.has(z.reportId));
+
+      expect(a.totals).toMatchObject({
+        orphanedCount: a.orphaned.length,
+        zombieCount: a.zombies.length,
+        orphanedZombieCount: a.zombies.filter((z) => z.isOrphaned).length,
+      });
+      expect(a.totals.estimatedMonthlySavingsUsd).toBeCloseTo(
+        sum(a.zombies.map((z) => z.estimatedMonthlySavingsUsd ?? 0)),
+        6,
+      );
+      expect(a.totals.estimatedMonthlySavingsCredits).toBeCloseTo(
+        sum(a.zombies.map((z) => z.estimatedMonthlySavingsCredits ?? 0)),
+        6,
+      );
+      expect(a.totals.orphanedSnowflakeCostUsd).toBeCloseTo(
+        sum(a.orphaned.map((o) => o.snowflakeCostUsd ?? 0)),
+        6,
+      );
+    });
+
+    it('follows the replay: orphaned and zombies are those of snapshot N', async () => {
+      const N = 4;
+      const [expected] = await t.sql<{ orphaned: number; zombies: number }>(
+        `SELECT COUNT_IF(owner_email IS NULL)::INTEGER AS orphaned,
+                COUNT_IF(monthly_active_views < ${config.COST_LOW_VIEWS})::INTEGER AS zombies
+         FROM REPORT_SNAPSHOTS WHERE snapshot_idx = ${N}`,
+      );
+      t.clock.set(N);
+      try {
+        const a: AnomalyReport = (await admin.get('/api/v1/costs/anomalies')).body;
+        expect(a.snapshotIdx).toBe(N);
+        expect(a.orphaned).toHaveLength(expected!.orphaned);
+        expect(a.zombies).toHaveLength(expected!.zombies);
+        expect([...a.orphaned, ...a.zombies].every((r) => r.snapshotIdx === N)).toBe(true);
+        expect(a.orphaned.every((o) => o.snapshotOwner === null)).toBe(true);
+      } finally {
+        t.clock.set(LATEST_TICK);
       }
     });
   });

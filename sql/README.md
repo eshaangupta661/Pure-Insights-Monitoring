@@ -6,17 +6,17 @@ and locally against DuckDB through four small, documented translations.
 
 ## Files and run order
 
-| file                        | creates                                                                                                     | what it does                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `00_setup_parameters.sql`   | `PARAMS`, `PARAM_ORPHAN_MARKERS`                                                                            | every price, rate and threshold (mirrors `server/src/config.ts`)                                               |
-| `01_schema.sql`             | all tables, `REPORT_CURRENT_OWNER`                                                                          | portal tables + `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` / `WAREHOUSE_METERING_HISTORY`; the effective owner    |
-| `02_data_quality.sql`       | `DQ_ROW_CHECKS`, `DQ_CHECKS`                                                                                | DQ01–DQ09 recomputed from the raw CSV text; compared with the TypeScript counts                                |
-| `03_query_level_cost.sql`   | `QUERY_HOUR_COST`, `QUERY_ATTRIBUTED_COST`                                                                  | each warehouse-hour's metered credits split across its queries by execution-time share                         |
-| `04_report_attribution.sql` | `REPORT_ATTRIBUTION_DAILY`, `REPORT_ATTRIBUTION`                                                            | roll-up via `QUERY_TAG`: credits, active/overhead split, $ cost, share; plus an `UNATTRIBUTED` line            |
-| `05_unit_economics.sql`     | `UNIT_ECONOMICS_SNAPSHOT`, `UNIT_ECONOMICS_REPORT`                                                          | cost per active view, Snowflake-only and fully loaded (+ AWS)                                                  |
-| `06_anomalies.sql`          | `ANOMALY_COST_PER_VIEW`, `ANOMALY_ZOMBIE_REPORTS`, `ANOMALY_AWS_VIEWS_MISMATCH`, `ANOMALY_NEGATIVE_CREDITS` | outliers, zombie reports, AWS-vs-views mismatch, negative-credit quarantine                                    |
-| `07_owner_chargeback.sql`   | `OWNER_CHARGEBACK`, `OWNER_CHARGEBACK_CURRENT`                                                              | cost per owner: point-in-time (snapshot owner) and current owner, each with `UNOWNED` and `UNATTRIBUTED` lines |
-| `08_reconciliation.sql`     | `RECONCILIATION`                                                                                            | PASS/FAIL checks; any FAIL stops the build and the server                                                      |
+| file                        | creates                                                                                                                                 | what it does                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `00_setup_parameters.sql`   | `PARAMS`, `PARAM_ORPHAN_MARKERS`                                                                                                        | every price, rate and threshold (mirrors `server/src/config.ts`)                                                                |
+| `01_schema.sql`             | all tables, `REPORT_CURRENT_OWNER`                                                                                                      | portal tables + `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` / `WAREHOUSE_METERING_HISTORY`; the effective owner                     |
+| `02_data_quality.sql`       | `DQ_ROW_CHECKS`, `DQ_CHECKS`                                                                                                            | DQ01–DQ09 recomputed from the raw CSV text; compared with the TypeScript counts                                                 |
+| `03_query_level_cost.sql`   | `QUERY_HOUR_COST`, `QUERY_ATTRIBUTED_COST`                                                                                              | each warehouse-hour's metered credits split across its queries by execution-time share                                          |
+| `04_report_attribution.sql` | `REPORT_ATTRIBUTION_DAILY`, `REPORT_ATTRIBUTION`                                                                                        | roll-up via `QUERY_TAG`: credits, active/overhead split, $ cost, share; plus an `UNATTRIBUTED` line                             |
+| `05_unit_economics.sql`     | `UNIT_ECONOMICS_SNAPSHOT`, `UNIT_ECONOMICS_REPORT`                                                                                      | cost per active view, Snowflake-only and fully loaded (+ AWS)                                                                   |
+| `06_anomalies.sql`          | `ANOMALY_COST_PER_VIEW`, `ANOMALY_ORPHANED_REPORTS`, `ANOMALY_ZOMBIE_REPORTS`, `ANOMALY_AWS_VIEWS_MISMATCH`, `ANOMALY_NEGATIVE_CREDITS` | outliers, orphaned reports (reassign), zombie reports (retire, with savings), AWS-vs-views mismatch, negative-credit quarantine |
+| `07_owner_chargeback.sql`   | `OWNER_CHARGEBACK`, `OWNER_CHARGEBACK_CURRENT`                                                                                          | cost per owner: point-in-time (snapshot owner) and current owner, each with `UNOWNED` and `UNATTRIBUTED` lines                  |
+| `08_reconciliation.sql`     | `RECONCILIATION`                                                                                                                        | PASS/FAIL checks; any FAIL stops the build and the server                                                                       |
 
 Every file starts with a header covering purpose, inputs, output columns and assumptions.
 
@@ -57,7 +57,8 @@ or without them; the integration test applies an override and re-checks C5 on th
 
 The results stored in `SQL_RESULTS` are frozen at ingest, when `OWNER_OVERRIDES` is empty. The
 API therefore never reads `current_owner` from them. It joins `REPORT_CURRENT_OWNER`, and reads
-the row sets that depend on ownership (`OWNER_CHARGEBACK_CURRENT`, `ANOMALY_ZOMBIE_REPORTS`)
+the row sets that depend on ownership (`OWNER_CHARGEBACK_CURRENT`, `ANOMALY_ORPHANED_REPORTS`,
+`ANOMALY_ZOMBIE_REPORTS`)
 from the live views. Re-running ingest rebuilds the warehouse and clears overrides and the audit
 log.
 
@@ -107,12 +108,13 @@ credits under that assumed rate. They are not a measurement.
 
 ### What the reconciliation proves, and what it doesn't
 
-`RECONCILIATION.check_kind` separates two kinds of evidence:
+`RECONCILIATION.check_kind` separates three kinds of evidence:
 
-| kind             | checks                                                                                                                                                                                                                        | meaning                                                                                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CONSERVATION** | C1 queries = metered · C2 every warehouse-hour = metered · C3 reports + `UNATTRIBUTED` = queries · C4 point-in-time chargeback (owners + `UNOWNED` + `UNATTRIBUTED`) = queries · C5 current-owner chargeback (same) = queries | Holds for any correct allocation over **real** Snowflake logs, whatever the workload: no credit is created, lost or double counted on the way from metering to owners. |
-| **GROUND_TRUTH** | G1 per (report, snapshot) and G2 per report: attributed ÷ (1 + rate) = `credits_clean` · G3 quarantined snapshots have no queries · G4 every query is tagged (unattributed = 0)                                               | Possible only because the simulator knows the answer, or properties of the data it generated.                                                                          |
+| kind             | checks                                                                                                                                                                                                                                                                    | meaning                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CONSERVATION** | C1 queries = metered · C2 every warehouse-hour = metered · C3 reports + `UNATTRIBUTED` = queries · C4 point-in-time chargeback (owners + `UNOWNED` + `UNATTRIBUTED`) = queries · C5 current-owner chargeback (same) = queries                                             | Holds for any correct allocation over **real** Snowflake logs, whatever the workload: no credit is created, lost or double counted on the way from metering to owners. |
+| **GROUND_TRUTH** | G1 per (report, snapshot) and G2 per report: attributed ÷ (1 + rate) = `credits_clean` · G3 quarantined snapshots have no queries · G4 every query is tagged (unattributed = 0)                                                                                           | Possible only because the simulator knows the answer, or properties of the data it generated.                                                                          |
+| **CONSISTENCY**  | K1 orphaned rows = DQ01 rows from the raw CSV (override aware) · K2 zombie rows = raw rows with views < `cost_low_views` · K3 Σ zombie savings = `savings_days_per_month` × Σ query credits on those snapshots' days · K4 orphaned, non-zombie snapshots carry no savings | The 06 orphaned/zombie split agrees with an independent recomputation from the raw CSV text and the query log. Holds on real logs too.                                 |
 
 G4 is deliberately not a conservation check: "no untagged queries" is a property of the
 simulator, not of correct accounting. On a real account, analyst queries on a shared warehouse
@@ -176,9 +178,12 @@ translation:
   NULL unit cost. Without it, DuckDB returns Infinity and Snowflake raises a division error.
   The `LN(...)` calls in 02 and 06 are also guarded with `CASE` inside the call, not only by the
   CTE's `WHERE`, because Snowflake does not promise to filter before evaluating expressions.
-- **Zombie report:** in the latest snapshot, the report still spends credits AND
-  (`current_owner IS NULL` OR views < `cost_low_views`), where `current_owner` comes from
-  `REPORT_CURRENT_OWNER`.
+- **Orphaned vs. zombie:** two views, one row per report × snapshot (the API reads the replay's
+  snapshot). _Orphaned_: no owner at that snapshot, whatever its usage (recommended action:
+  reassign); the owner is the `OWNER_OVERRIDES` row when one exists, else that snapshot's
+  `owner_email`. _Zombie_: views < `cost_low_views`, owned or not (action: retire). Only zombies
+  carry estimated savings = the snapshot's attributed credits × `savings_days_per_month` (30),
+  priced at `credit_price_usd`; NULL when the credits were quarantined.
 - **Two chargeback views:** point-in-time charges each snapshot to that snapshot's owner;
   current charges all history to today's owner. Reports change owners 7–13 times, so the two
   differ: the UNOWNED line is about 162k credits point-in-time vs. about 199k under current owner.

@@ -3,22 +3,27 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   AnomalyReport,
+  AnomalyTotals,
   ChargebackRow,
   ChargebackTotals,
   ChargebackView,
   CostReportsTotals,
   CostRow,
+  OrphanedReport,
   PageWithTotals,
   UnitEconomicsRow,
   UnitEconomicsTotals,
   ViewerAnomalyReport,
+  ViewerAnomalyTotals,
   ViewerChargebackRow,
   ViewerCostRow,
+  ViewerOrphanedReport,
   ViewerUnitEconomicsRow,
   ViewerZombieReport,
   ZombieReport,
 } from '@pic/shared';
 import { api } from '../api/http';
+import { ANOMALIES_KEY } from '../api/queries';
 import { useAuth } from '../auth/AuthProvider';
 import {
   EmptyState,
@@ -47,8 +52,12 @@ const perView = new Intl.NumberFormat('en-US', {
 });
 const formatPerView = (v: number): string => perView.format(v);
 
-type Redactable = ZombieReport | ViewerZombieReport;
-const zombieHasMoney = (z: Redactable): z is ZombieReport => 'estimatedMonthlySavingsUsd' in z;
+type ZombieRow = ZombieReport | ViewerZombieReport;
+const zombieHasMoney = (z: ZombieRow): z is ZombieReport => 'estimatedMonthlySavingsUsd' in z;
+type OrphanRow = OrphanedReport | ViewerOrphanedReport;
+const orphanHasMoney = (o: OrphanRow): o is OrphanedReport => 'snowflakeCostUsd' in o;
+const totalsHaveMoney = (t: AnomalyTotals | ViewerAnomalyTotals): t is AnomalyTotals =>
+  'estimatedMonthlySavingsUsd' in t;
 
 function Tile({ label, value, detail }: { label: string; value: string; detail: ReactNode }) {
   return (
@@ -297,35 +306,97 @@ function UnitEconomics({ moneyVisible }: { moneyVisible: boolean }) {
   );
 }
 
-const ZOMBIE_REASON: Record<Redactable['reason'], string> = {
-  ORPHANED: 'No owner',
-  LOW_USAGE: 'Low usage',
-  BOTH: 'No owner, low usage',
-};
-
 /**
  * The savings assumptions, read back from the API's own numbers (nothing is hard-coded here):
- * days = estimate / latest cost, price per credit = latest cost / latest credits.
+ * days = estimate / snapshot cost, price per credit = snapshot cost / snapshot credits.
  */
 function savingsAssumptions(priced: ZombieReport[]): { days: number; usdPerCredit: number } | null {
-  const z = priced.find((r) => r.latestSnowflakeCostUsd > 0 && r.latestAttributedCredits > 0);
-  if (!z) return null;
+  const z = priced.find(
+    (r) =>
+      r.snowflakeCostUsd !== null &&
+      r.snowflakeCostUsd > 0 &&
+      r.attributedCredits !== null &&
+      r.attributedCredits > 0 &&
+      r.estimatedMonthlySavingsUsd !== null,
+  );
+  if (!z || z.snowflakeCostUsd === null || z.attributedCredits === null) return null;
   return {
-    days: Math.round(z.estimatedMonthlySavingsUsd / z.latestSnowflakeCostUsd),
-    usdPerCredit: z.latestSnowflakeCostUsd / z.latestAttributedCredits,
+    days: Math.round((z.estimatedMonthlySavingsUsd ?? 0) / z.snowflakeCostUsd),
+    usdPerCredit: z.snowflakeCostUsd / z.attributedCredits,
   };
 }
 
-function Zombies({ zombies }: { zombies: Redactable[] }) {
-  const priced = zombies.filter(zombieHasMoney);
-  const total = priced.reduce((a, z) => a + z.estimatedMonthlySavingsUsd, 0);
-  const totalCredits = priced.reduce((a, z) => a + z.estimatedMonthlySavingsCredits, 0);
+function ReportCell({ id, name, owner }: { id: string; name: string; owner: ReactNode }) {
+  return (
+    <td className="py-2 pr-3">
+      <Link to={`/reports/${id}`} className="hover:text-accent hover:underline">
+        <span className="font-medium text-gray-900">{name}</span>{' '}
+        <span className="text-gray-500">{id}</span>
+      </Link>
+      <span className="block text-xs text-gray-500">{owner}</span>
+    </td>
+  );
+}
+
+const QUARANTINED = <span className="text-gray-500">n/a – credits quarantined</span>;
+
+function Orphaned({ rows, canReassign }: { rows: OrphanRow[]; canReassign: boolean }) {
+  const priced = rows.some(orphanHasMoney);
+  return rows.length === 0 ? (
+    <EmptyState title="No orphaned reports" hint="Every report in your scope has an owner." />
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[34rem] text-sm">
+        <thead className="border-b border-gray-200 text-left text-xs text-gray-500">
+          <tr>
+            <th className={th}>Report</th>
+            <th className={`${th} text-right`}>Views</th>
+            {priced && <th className={`${th} text-right`}>Snowflake cost (this snapshot)</th>}
+            <th className={th}>Also a zombie</th>
+            {canReassign && <th className={th} />}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {rows.map((o) => (
+            <tr key={o.reportId}>
+              <ReportCell
+                id={o.reportId}
+                name={o.reportName}
+                owner={o.isOverridden ? 'Set to no owner by an admin' : 'No owner'}
+              />
+              <td className="py-2 pr-3 text-right tabular-nums">{formatInt(o.views)}</td>
+              {orphanHasMoney(o) && (
+                <td className="py-2 pr-3 text-right tabular-nums">
+                  {o.snowflakeCostUsd === null ? QUARANTINED : formatUsd(o.snowflakeCostUsd)}
+                </td>
+              )}
+              <td className="py-2 pr-3 text-gray-700">{o.isZombie ? 'Yes, see below' : 'No'}</td>
+              {canReassign && (
+                <td className="py-2 text-right">
+                  <Link
+                    to={`/reports/${o.reportId}`}
+                    className="text-sm text-accent hover:underline"
+                  >
+                    Reassign
+                  </Link>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Zombies({ rows }: { rows: ZombieRow[] }) {
+  const priced = rows.filter(zombieHasMoney);
   const assumptions = savingsAssumptions(priced);
   const tip = assumptions
-    ? `Latest snapshot's Snowflake cost × ${assumptions.days} days (a snapshot is one day). AWS hosting is excluded. Credits are priced at ${formatUsd(assumptions.usdPerCredit)} each, a simulation assumption: the data is synthetic, so these are not real dollars.`
-    : 'Latest snapshot’s Snowflake cost projected over a month. AWS hosting is excluded.';
-  return zombies.length === 0 ? (
-    <EmptyState title="No zombie reports" hint="Every report that spends has an owner and users." />
+    ? `This snapshot's Snowflake cost × ${assumptions.days} days (a snapshot is one day). AWS hosting is excluded. Credits are priced at ${formatUsd(assumptions.usdPerCredit)} each, a simulation assumption: the data is synthetic, so these are not real dollars.`
+    : 'This snapshot’s Snowflake cost projected over a month. AWS hosting is excluded.';
+  return rows.length === 0 ? (
+    <EmptyState title="No zombie reports" hint="Every report in your scope has enough views." />
   ) : (
     <>
       <div className="overflow-x-auto">
@@ -333,11 +404,10 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
           <thead className="border-b border-gray-200 text-left text-xs text-gray-500">
             <tr>
               <th className={th}>Report</th>
-              <th className={th}>Why</th>
               <th className={`${th} text-right`}>Views</th>
               {priced.length > 0 && (
                 <>
-                  <th className={`${th} text-right`}>Latest cost</th>
+                  <th className={`${th} text-right`}>Snowflake cost (this snapshot)</th>
                   <th className={`${th} text-right`}>
                     Est. monthly Snowflake savings <InfoTip text={tip} />
                     <span className="block font-normal">
@@ -350,56 +420,45 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {zombies.map((z) => (
+            {rows.map((z) => (
               <tr key={z.reportId}>
-                <td className="py-2 pr-3">
-                  <Link to={`/reports/${z.reportId}`} className="hover:text-accent hover:underline">
-                    <span className="font-medium text-gray-900">{z.reportName}</span>{' '}
-                    <span className="text-gray-500">{z.reportId}</span>
-                  </Link>
-                  <span className="block text-xs text-gray-500">
-                    {z.currentOwner ?? 'No owner'}
-                  </span>
-                </td>
-                <td className="py-2 pr-3 text-gray-700">{ZOMBIE_REASON[z.reason]}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{formatInt(z.latestViews)}</td>
+                <ReportCell
+                  id={z.reportId}
+                  name={z.reportName}
+                  owner={z.isOrphaned ? 'No owner (also orphaned)' : (z.currentOwner ?? 'No owner')}
+                />
+                <td className="py-2 pr-3 text-right tabular-nums">{formatInt(z.views)}</td>
                 {zombieHasMoney(z) && (
                   <>
                     <td className="py-2 pr-3 text-right tabular-nums">
-                      {formatUsd(z.latestSnowflakeCostUsd)}
+                      {z.snowflakeCostUsd === null ? QUARANTINED : formatUsd(z.snowflakeCostUsd)}
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums">
-                      <span className="font-medium">{formatUsd(z.estimatedMonthlySavingsUsd)}</span>
-                      <span className="block text-xs text-gray-500">
-                        {formatCredits(z.estimatedMonthlySavingsCredits)} credits
-                      </span>
+                      {z.estimatedMonthlySavingsUsd === null ||
+                      z.estimatedMonthlySavingsCredits === null ? (
+                        <span className="text-gray-500">n/a – cost unknown</span>
+                      ) : (
+                        <>
+                          <span className="font-medium">
+                            {formatUsd(z.estimatedMonthlySavingsUsd)}
+                          </span>
+                          <span className="block text-xs text-gray-500">
+                            {formatCredits(z.estimatedMonthlySavingsCredits)} credits
+                          </span>
+                        </>
+                      )}
                     </td>
                   </>
                 )}
               </tr>
             ))}
           </tbody>
-          {priced.length > 0 && (
-            <tfoot>
-              <tr className="border-t border-gray-200 text-sm font-medium">
-                <td colSpan={4} className="py-2 text-right text-gray-700">
-                  Total estimated monthly savings
-                </td>
-                <td className="py-2 pr-3 text-right tabular-nums">
-                  {formatUsd(total)}
-                  <span className="block text-xs font-normal text-gray-500">
-                    {formatCredits(totalCredits)} credits
-                  </span>
-                </td>
-              </tr>
-            </tfoot>
-          )}
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        A zombie report still spends credits in the latest snapshot but has no owner or almost no
-        views. Savings are an estimate on simulated data, not real spend; hover the info icon for
-        the assumptions.
+        Savings are an estimate on simulated data, not real spend; hover the info icon for the
+        assumptions. Orphaned reports add nothing to the estimate: reassigning a report doesn’t stop
+        its spend.
       </p>
     </>
   );
@@ -545,14 +604,12 @@ export default function CostPage() {
     },
   });
   const anomalies = useQuery({
-    queryKey: [...COST_KEY, 'anomalies'],
+    queryKey: ANOMALIES_KEY,
     queryFn: () => api<AnomalyReport | ViewerAnomalyReport>('/costs/anomalies'),
+    placeholderData: keepPreviousData,
   });
-
-  const zombies: Redactable[] = anomalies.data?.zombies ?? [];
-  const savings = zombies
-    .filter(zombieHasMoney)
-    .reduce((a, z) => a + z.estimatedMonthlySavingsUsd, 0);
+  const a = anomalies.data;
+  const atSnapshot = a ? `At snapshot ${a.snapshotIdx + 1}` : 'At the replay’s snapshot';
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -567,7 +624,7 @@ export default function CostPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {totals.data ? (
           <>
             <Tile
@@ -593,18 +650,29 @@ export default function CostPage() {
         ) : (
           Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-24" />)
         )}
-        {anomalies.data ? (
-          <Tile
-            label="Zombie reports"
-            value={formatInt(zombies.length)}
-            detail={
-              moneyVisible
-                ? `Est. ${formatUsd(savings)} monthly Snowflake savings (simulated)`
-                : 'Spending with no owner or users'
-            }
-          />
+        {a ? (
+          <>
+            <Tile
+              label="Orphaned reports"
+              value={formatInt(a.totals.orphanedCount)}
+              detail={
+                totalsHaveMoney(a.totals)
+                  ? `${formatUsd(a.totals.orphanedSnowflakeCostUsd)} Snowflake spend at snapshot ${a.snapshotIdx + 1} · reassign`
+                  : `No owner at snapshot ${a.snapshotIdx + 1} · reassign`
+              }
+            />
+            <Tile
+              label="Zombie reports"
+              value={formatInt(a.totals.zombieCount)}
+              detail={
+                totalsHaveMoney(a.totals)
+                  ? `Est. ${formatUsd(a.totals.estimatedMonthlySavingsUsd)} monthly Snowflake savings if retired (simulated)`
+                  : `Under the views threshold at snapshot ${a.snapshotIdx + 1} · retire`
+              }
+            />
+          </>
         ) : (
-          <Skeleton className="h-24" />
+          Array.from({ length: 2 }, (_, i) => <Skeleton key={`a${i}`} className="h-24" />)
         )}
       </div>
       {totals.isError && (
@@ -614,12 +682,33 @@ export default function CostPage() {
       <ReportCosts moneyVisible={moneyVisible} />
       <UnitEconomics moneyVisible={moneyVisible} />
       <Widget
-        title="Zombie reports"
-        subtitle="Still spending, but nobody owns them or uses them"
+        title="Orphaned reports"
+        subtitle={`${atSnapshot}: nobody owns these, whatever their usage. Recommended action: reassign an owner.`}
         sql="06_anomalies.sql"
       >
-        {anomalies.data ? (
-          <Zombies zombies={zombies} />
+        {a ? (
+          <Orphaned rows={a.orphaned} canReassign={role === 'admin'} />
+        ) : (
+          <Loading error={anomalies.error} onRetry={() => void anomalies.refetch()} />
+        )}
+      </Widget>
+      <Widget
+        title="Zombie reports"
+        subtitle={`${atSnapshot}: almost nobody uses these (owned or not). Recommended action: retire. The only source of estimated savings.`}
+        sql="06_anomalies.sql"
+      >
+        {a ? (
+          <>
+            <Zombies rows={a.zombies} />
+            {totalsHaveMoney(a.totals) && a.zombies.length > 0 && (
+              <p className="mt-2 text-right text-sm font-medium text-gray-700">
+                Total estimated monthly savings: {formatUsd(a.totals.estimatedMonthlySavingsUsd)}{' '}
+                <span className="font-normal text-gray-500">
+                  ({formatCredits(a.totals.estimatedMonthlySavingsCredits)} credits)
+                </span>
+              </p>
+            )}
+          </>
         ) : (
           <Loading error={anomalies.error} onRetry={() => void anomalies.refetch()} />
         )}

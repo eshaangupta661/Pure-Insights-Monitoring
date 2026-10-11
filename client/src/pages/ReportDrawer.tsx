@@ -10,7 +10,7 @@ import type {
   ViewerReportDetail,
 } from '@pic/shared';
 import { api } from '../api/http';
-import { OVERVIEW_KEY, REPORTS_KEY, useTrend } from '../api/queries';
+import { ANOMALIES_KEY, OVERVIEW_KEY, REPORTS_KEY, useTrend } from '../api/queries';
 import { useAuth } from '../auth/AuthProvider';
 import {
   ErrorState,
@@ -81,6 +81,7 @@ function AssignOwner({ report }: { report: Detail }) {
       queryClient.setQueryData([...REPORTS_KEY, 'detail', report.reportId], updated);
       void queryClient.invalidateQueries({ queryKey: REPORTS_KEY });
       void queryClient.invalidateQueries({ queryKey: OVERVIEW_KEY });
+      void queryClient.invalidateQueries({ queryKey: ANOMALIES_KEY });
       setEmail('');
       setReason('');
     },

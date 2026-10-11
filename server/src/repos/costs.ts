@@ -12,12 +12,14 @@
 import type { DuckDBValue } from '@duckdb/node-api';
 import type {
   AnomalyReport,
+  AnomalyTotals,
   AwsViewsMismatch,
   ChargebackRow,
   ChargebackTotals,
   ChargebackView,
   CostReportsTotals,
   CostRow,
+  OrphanedReport,
   PageWithTotals,
   PerViewOutlier,
   QuarantinedSnapshot,
@@ -26,7 +28,6 @@ import type {
   ZombieReport,
 } from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
-import { config } from '../config.js';
 import type { Queryable } from '../data/warehouse.js';
 import { paginate, type PageQuery } from '../http/pagination.js';
 import { RESULTS_SCHEMA } from '../sql/runner.js';
@@ -137,6 +138,7 @@ export type AnomalyOrder = 'severity' | 'neutral';
 export async function getAnomalies(
   db: Queryable,
   scope: Scope,
+  tick: number,
   order: AnomalyOrder,
 ): Promise<AnomalyReport> {
   const by = (severity: string, neutral: string) => (order === 'severity' ? severity : neutral);
@@ -158,26 +160,59 @@ export async function getAnomalies(
     pv.params,
   );
 
-  // Live view: membership depends on the current owner (an orphaned report is a zombie).
-  const z = scoped('z.current_owner');
-  const zombieRows = await db.query<Omit<ZombieReport, 'estimatedMonthlySavingsUsd' | 'estimatedMonthlySavingsCredits'>>(
-    `SELECT z.report_id AS "reportId", z.report_name AS "reportName", z.current_owner AS "currentOwner",
-            z.latest_snapshot_idx AS "latestSnapshotIdx", z.latest_views AS "latestViews", z.reason,
-            z.latest_attributed_credits AS "latestAttributedCredits",
-            z.latest_snowflake_cost_usd AS "latestSnowflakeCostUsd",
-            z.total_attributed_credits AS "totalAttributedCredits",
-            z.total_attributed_cost_usd AS "totalAttributedCostUsd"
-     FROM ANOMALY_ZOMBIE_REPORTS z
+  // Live views at the replay's snapshot: membership depends on the owner (overrides apply).
+  const atTick = (column: string) => {
+    const s = scoped(column);
+    s.params.push(tick);
+    return { where: `${s.where} AND snapshot_idx = $${s.params.length}`, params: s.params };
+  };
+  const orphan = atTick('current_owner');
+  const orphaned = await db.query<OrphanedReport>(
+    `SELECT report_id AS "reportId", report_name AS "reportName", current_owner AS "currentOwner",
+            snapshot_idx AS "snapshotIdx", snapshot_date AS "snapshotDate",
+            snapshot_owner AS "snapshotOwner", is_overridden AS "isOverridden", views,
+            is_zombie AS "isZombie", attributed_credits AS "attributedCredits",
+            snowflake_cost_usd AS "snowflakeCostUsd",
+            total_attributed_credits AS "totalAttributedCredits",
+            total_attributed_cost_usd AS "totalAttributedCostUsd"
+     FROM ANOMALY_ORPHANED_REPORTS
+     WHERE ${orphan.where}
+     ORDER BY ${by('snowflake_cost_usd DESC NULLS LAST, report_id', 'report_id')}`,
+    orphan.params,
+  );
+
+  const z = atTick('current_owner');
+  const zombies = await db.query<ZombieReport>(
+    `SELECT report_id AS "reportId", report_name AS "reportName", current_owner AS "currentOwner",
+            snapshot_idx AS "snapshotIdx", snapshot_date AS "snapshotDate",
+            is_orphaned AS "isOrphaned", views, attributed_credits AS "attributedCredits",
+            snowflake_cost_usd AS "snowflakeCostUsd",
+            estimated_monthly_savings_usd AS "estimatedMonthlySavingsUsd",
+            estimated_monthly_savings_credits AS "estimatedMonthlySavingsCredits",
+            total_attributed_credits AS "totalAttributedCredits",
+            total_attributed_cost_usd AS "totalAttributedCostUsd"
+     FROM ANOMALY_ZOMBIE_REPORTS
      WHERE ${z.where}
-     ORDER BY ${by('z.total_attributed_credits DESC, z.report_id', 'z.report_id')}`,
+     ORDER BY ${by('estimated_monthly_savings_usd DESC NULLS LAST, report_id', 'report_id')}`,
     z.params,
   );
 
-  const zombies: ZombieReport[] = zombieRows.map((r) => ({
-    ...r,
-    estimatedMonthlySavingsUsd: r.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
-    estimatedMonthlySavingsCredits: r.latestAttributedCredits * config.SAVINGS_DAYS_PER_MONTH,
-  }));
+  // Sums of the /sql/06 columns over the scoped rows; savings come from the zombie view only.
+  const t = atTick('current_owner');
+  const [totals] = await db.query<AnomalyTotals>(
+    `WITH o AS (SELECT * FROM ANOMALY_ORPHANED_REPORTS WHERE ${t.where}),
+          zz AS (SELECT * FROM ANOMALY_ZOMBIE_REPORTS WHERE ${t.where})
+     SELECT (SELECT COUNT(*) FROM o)::INTEGER                          AS "orphanedCount",
+            (SELECT COUNT(*) FROM zz)::INTEGER                         AS "zombieCount",
+            (SELECT COUNT_IF(is_orphaned) FROM zz)::INTEGER            AS "orphanedZombieCount",
+            (SELECT COALESCE(SUM(snowflake_cost_usd), 0) FROM o)       AS "orphanedSnowflakeCostUsd",
+            (SELECT COALESCE(SUM(estimated_monthly_savings_usd), 0) FROM zz)
+                                                                       AS "estimatedMonthlySavingsUsd",
+            (SELECT COALESCE(SUM(estimated_monthly_savings_credits), 0) FROM zz)
+                                                                       AS "estimatedMonthlySavingsCredits"`,
+    t.params,
+  );
+  if (!totals) throw new Error('anomaly totals query returned no row');
 
   const aws = scoped('o.current_owner');
   const awsViewsMismatch = await db.query<AwsViewsMismatch>(
@@ -202,7 +237,15 @@ export async function getAnomalies(
     q.params,
   );
 
-  return { perViewOutliers, zombies, awsViewsMismatch, quarantinedSnapshots };
+  return {
+    snapshotIdx: tick,
+    perViewOutliers,
+    orphaned,
+    zombies,
+    awsViewsMismatch,
+    quarantinedSnapshots,
+    totals,
+  };
 }
 
 // ---- owner chargeback (07) --------------------------------------------------------------

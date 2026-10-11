@@ -1,4 +1,4 @@
-import type { AuditLogEntry, ChargebackRow, ReportDetail } from '@pic/shared';
+import type { AnomalyReport, AuditLogEntry, ChargebackRow, ReportDetail } from '@pic/shared';
 import request, { type Agent } from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildTestApp, type TestApp } from '../helpers/app.js';
@@ -135,19 +135,16 @@ describe('owner override (admin) and audit log', () => {
     expect((await chargeback('current', OWNER))?.reportCount).toBe(12);
     expect((await chargeback('current', 'UNOWNED'))?.reportCount).toBe(13);
     expect((await admin.get('/api/v1/overview')).body.orphanedCount).toBe(13);
-    const zombies = (await admin.get('/api/v1/costs/anomalies')).body.zombies as {
-      reportId: string;
-      reason: string;
-    }[];
-    expect(zombies.find((z) => z.reportId === orphan)?.reason ?? 'none').not.toMatch(
-      /ORPHANED|BOTH/,
-    );
+    const anomalies: AnomalyReport = (await admin.get('/api/v1/costs/anomalies')).body;
+    expect(anomalies.orphaned.map((o) => o.reportId)).not.toContain(orphan);
+    expect(anomalies.totals.orphanedCount).toBe(13);
+    expect(anomalies.zombies.find((z) => z.reportId === orphan)?.isOrphaned ?? false).toBe(false);
 
-    // Conservation on the live views, with the override in place.
+    // Conservation and the orphaned/zombie split on the live views, with the override in place.
     const recon = await t.sql<{ check_id: string; status: string }>(
-      `SELECT check_id, status FROM RECONCILIATION WHERE check_kind = 'CONSERVATION'`,
+      `SELECT check_id, status FROM RECONCILIATION WHERE check_kind IN ('CONSERVATION', 'CONSISTENCY')`,
     );
-    expect(recon.map((r) => r.status)).toEqual(['PASS', 'PASS', 'PASS', 'PASS', 'PASS']);
+    expect(recon.map((r) => r.status)).toEqual(Array(9).fill('PASS'));
   });
 
   it('null orphans a report; a second PATCH replaces (not duplicates) the override', async () => {

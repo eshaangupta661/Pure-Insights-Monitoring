@@ -141,13 +141,26 @@ describe('owner scoping (user_3, who owns 11 reports)', () => {
     );
   });
 
-  it('GET /costs/anomalies: every section lists only their reports (no orphan zombies)', async () => {
+  it('GET /costs/anomalies: every section lists only their reports; totals are theirs', async () => {
     const a: AnomalyReport = (await owner.get('/api/v1/costs/anomalies')).body;
-    const sections = [a.perViewOutliers, a.zombies, a.awsViewsMismatch, a.quarantinedSnapshots];
+    const sections = [
+      a.perViewOutliers,
+      a.orphaned,
+      a.zombies,
+      a.awsViewsMismatch,
+      a.quarantinedSnapshots,
+    ];
     for (const rows of sections) {
       expect(rows.every((r) => mine.includes(r.reportId) && r.currentOwner === OWNER)).toBe(true);
     }
-    expect(a.zombies.every((z) => z.reason === 'LOW_USAGE')).toBe(true);
+    // At the latest snapshot their reports all have an owner (them), so none is orphaned.
+    expect(a.orphaned).toEqual([]);
+    expect(a.zombies.every((z) => !z.isOrphaned)).toBe(true);
+    expect(a.totals).toMatchObject({ orphanedCount: 0, zombieCount: a.zombies.length });
+    expect(a.totals.estimatedMonthlySavingsUsd).toBeCloseTo(
+      a.zombies.reduce((s, z) => s + (z.estimatedMonthlySavingsUsd ?? 0), 0),
+      6,
+    );
     const [expected] = await t.sql<{ n: number }>(
       `SELECT count(*)::INTEGER AS n FROM SQL_RESULTS.ANOMALY_AWS_VIEWS_MISMATCH
        WHERE report_id IN (${mine.map((id) => `'${id}'`).join(',')})`,

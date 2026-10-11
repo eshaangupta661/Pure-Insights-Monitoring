@@ -20,7 +20,14 @@ import {
   type ServerToClientEvents,
   type TickEvent,
 } from '@pic/shared';
-import { ALERTS_KEY, OVERVIEW_KEY, REPLAY_KEY, REPORTS_KEY, TREND_KEY } from '../api/queries';
+import {
+  ALERTS_KEY,
+  ANOMALIES_KEY,
+  OVERVIEW_KEY,
+  REPLAY_KEY,
+  REPORTS_KEY,
+  TREND_KEY,
+} from '../api/queries';
 import { ApiRequestError, api } from '../api/http';
 import { useAuth } from '../auth/AuthProvider';
 import { useToast } from '../toast/ToastProvider';
@@ -167,6 +174,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       refreshLists();
       void queryClient.invalidateQueries({ queryKey: REPLAY_KEY });
       void queryClient.invalidateQueries({ queryKey: TREND_KEY });
+      void queryClient.invalidateQueries({ queryKey: ANOMALIES_KEY });
     });
     socket.on('kpi:update', (kpis: OverviewKpis) => {
       queryClient.setQueryData(OVERVIEW_KEY, kpis);

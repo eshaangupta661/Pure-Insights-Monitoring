@@ -174,13 +174,29 @@ snapshots.
 | -------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /costs/reports?sort=cost\|queries\|reportId`                    | per report + `UNATTRIBUTED`            | attributed, active and overhead credits, USD, share                                                                                                                   |
 | `GET /costs/unit-economics?sort=costPerView\|reportId`               | per report                             | Snowflake-only and fully loaded cost per view; NULL for no costed views                                                                                               |
-| `GET /costs/anomalies`                                               | four short sections, not paginated     | `perViewOutliers`, `zombies`, `awsViewsMismatch`, `quarantinedSnapshots`                                                                                              |
+| `GET /costs/anomalies`                                               | short sections, not paginated          | `perViewOutliers`, `orphaned`, `zombies`, `awsViewsMismatch`, `quarantinedSnapshots`, plus `snapshotIdx` and `totals` (see below)                                     |
 | `GET /costs/chargeback?view=point_in_time\|current&sort=cost\|owner` | per owner + `UNOWNED` + `UNATTRIBUTED` | point-in-time (admins and viewers; 403 for owners): each snapshot charged to that snapshot's owner. current (owners' default): whole history charged to today's owner |
 
 Numbers that don't depend on ownership come from the results stored and reconciled at ingest
-(`SQL_RESULTS`). The owner always comes from the live `REPORT_CURRENT_OWNER` view. The two row
-sets that depend on ownership (current-owner chargeback, zombies) are read from the live views,
-so overrides show up immediately. They are also the slowest calls, about 40–100 ms locally.
+(`SQL_RESULTS`). The owner always comes from the live `REPORT_CURRENT_OWNER` view. The row sets
+that depend on ownership (current-owner chargeback, orphaned and zombie reports) are read from
+the live views, so overrides show up immediately. They are also the slowest calls, about
+40–100 ms locally.
+
+**Orphaned vs. zombie** (`/sql/06`). Two separate problems with different fixes, both at the
+replay's current snapshot (`snapshotIdx`):
+
+| section    | a report is listed when                                                 | recommended action | savings                                        |
+| ---------- | ----------------------------------------------------------------------- | ------------------ | ---------------------------------------------- |
+| `orphaned` | it has no owner at that snapshot (an override wins), whatever its usage | reassign           | none: reassigning doesn't stop spend           |
+| `zombies`  | its views are below `COST_LOW_VIEWS` (50), owned or not                 | retire             | that snapshot's Snowflake cost × 30 days       |
+
+A report can be in both (`orphaned[].isZombie`, `zombies[].isOrphaned`). Estimated savings come
+only from zombies; a zombie whose credits were quarantined (DQ02) has `null` savings (unknown,
+not 0). `totals` holds the counts (`orphanedCount`, `zombieCount`, `orphanedZombieCount`) and,
+for admins and owners, `orphanedSnowflakeCostUsd`, `estimatedMonthlySavingsUsd` and
+`estimatedMonthlySavingsCredits`, summed over the caller's scope. Viewers get the counts only,
+and rows without money. Reconciliation checks K1–K4 (`/sql/08`) verify the split.
 
 ### Alerts and replay
 
@@ -259,7 +275,7 @@ it) and an `AUDIT_LOG` row in **one transaction**. If either write fails, neithe
 `ownerEmail: null` orphans the report. The change takes effect immediately across the API:
 
 - owner scoping, `currentOwner` and the overview's orphan count
-- the current-owner chargeback and the zombie list
+- the current-owner chargeback and the orphaned and zombie lists
 - the report's alerts
 
 Point-in-time chargeback doesn't change, because it charges past snapshots to their owners at

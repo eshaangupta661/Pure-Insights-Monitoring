@@ -14,6 +14,10 @@ import type {
   ReplayState,
   Severity,
   AnomalyReport,
+  AnomalyTotals,
+  OrphanedReport,
+  ViewerAnomalyTotals,
+  ViewerOrphanedReport,
   AuditAction,
   AuditLogEntry,
   AuthUser,
@@ -592,26 +596,66 @@ export const perViewOutlierSchema = viewerPerViewOutlierSchema
   .openapi('PerViewOutlier');
 assertTrue<AssertEqual<z.infer<typeof perViewOutlierSchema>, PerViewOutlier>>();
 
+export const viewerOrphanedReportSchema = z
+  .object({
+    ...anomalyBase,
+    snapshotIdx: z.number().int(),
+    snapshotDate: isoDate,
+    snapshotOwner: z.string().nullable(),
+    isOverridden: z.boolean(),
+    views: z.number().int(),
+    isZombie: z.boolean(),
+  })
+  .openapi('ViewerOrphanedReport');
+assertTrue<AssertEqual<z.infer<typeof viewerOrphanedReportSchema>, ViewerOrphanedReport>>();
+export const orphanedReportSchema = viewerOrphanedReportSchema
+  .extend({
+    attributedCredits: z.number().nullable(),
+    snowflakeCostUsd: nullableUsd,
+    totalAttributedCredits: z.number(),
+    totalAttributedCostUsd: usd,
+  })
+  .openapi('OrphanedReport');
+assertTrue<AssertEqual<z.infer<typeof orphanedReportSchema>, OrphanedReport>>();
+
 export const viewerZombieReportSchema = z
   .object({
     ...anomalyBase,
-    latestSnapshotIdx: z.number().int(),
-    latestViews: z.number().int(),
-    reason: z.enum(['ORPHANED', 'LOW_USAGE', 'BOTH']),
+    snapshotIdx: z.number().int(),
+    snapshotDate: isoDate,
+    isOrphaned: z.boolean(),
+    views: z.number().int(),
   })
   .openapi('ViewerZombieReport');
 assertTrue<AssertEqual<z.infer<typeof viewerZombieReportSchema>, ViewerZombieReport>>();
 export const zombieReportSchema = viewerZombieReportSchema
   .extend({
-    latestAttributedCredits: z.number(),
-    latestSnowflakeCostUsd: usd,
-    estimatedMonthlySavingsUsd: usd,
-    estimatedMonthlySavingsCredits: z.number(),
+    attributedCredits: z.number().nullable(),
+    snowflakeCostUsd: nullableUsd,
+    estimatedMonthlySavingsUsd: nullableUsd,
+    estimatedMonthlySavingsCredits: z.number().nullable(),
     totalAttributedCredits: z.number(),
     totalAttributedCostUsd: usd,
   })
   .openapi('ZombieReport');
 assertTrue<AssertEqual<z.infer<typeof zombieReportSchema>, ZombieReport>>();
+
+export const viewerAnomalyTotalsSchema = z
+  .object({
+    orphanedCount: z.number().int(),
+    zombieCount: z.number().int(),
+    orphanedZombieCount: z.number().int(),
+  })
+  .openapi('ViewerAnomalyTotals');
+assertTrue<AssertEqual<z.infer<typeof viewerAnomalyTotalsSchema>, ViewerAnomalyTotals>>();
+export const anomalyTotalsSchema = viewerAnomalyTotalsSchema
+  .extend({
+    orphanedSnowflakeCostUsd: usd,
+    estimatedMonthlySavingsUsd: usd,
+    estimatedMonthlySavingsCredits: z.number(),
+  })
+  .openapi('AnomalyTotals');
+assertTrue<AssertEqual<z.infer<typeof anomalyTotalsSchema>, AnomalyTotals>>();
 
 export const viewerAwsViewsMismatchSchema = z
   .object({
@@ -640,20 +684,26 @@ assertTrue<AssertEqual<z.infer<typeof quarantinedSnapshotSchema>, QuarantinedSna
 
 export const anomalyReportSchema = z
   .object({
+    snapshotIdx: z.number().int(),
     perViewOutliers: z.array(perViewOutlierSchema),
+    orphaned: z.array(orphanedReportSchema),
     zombies: z.array(zombieReportSchema),
     awsViewsMismatch: z.array(awsViewsMismatchSchema),
     quarantinedSnapshots: z.array(quarantinedSnapshotSchema),
+    totals: anomalyTotalsSchema,
   })
   .openapi('AnomalyReport');
 assertTrue<AssertEqual<z.infer<typeof anomalyReportSchema>, AnomalyReport>>();
 
 export const viewerAnomalyReportSchema = z
   .object({
+    snapshotIdx: z.number().int(),
     perViewOutliers: z.array(viewerPerViewOutlierSchema),
+    orphaned: z.array(viewerOrphanedReportSchema),
     zombies: z.array(viewerZombieReportSchema),
     awsViewsMismatch: z.array(viewerAwsViewsMismatchSchema),
     quarantinedSnapshots: z.array(viewerQuarantinedSnapshotSchema),
+    totals: viewerAnomalyTotalsSchema,
   })
   .openapi('ViewerAnomalyReport');
 assertTrue<AssertEqual<z.infer<typeof viewerAnomalyReportSchema>, ViewerAnomalyReport>>();

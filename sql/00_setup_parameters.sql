@@ -10,6 +10,7 @@
 --                 latency_critical_sec     CRITICAL alerts (> this)
 --                 cost_robust_z            |modified z| above this is an outlier (DQ04, 06)
 --                 cost_low_views           "low usage" views threshold (DQ04 hard rule, zombies)
+--                 savings_days_per_month   days a zombie's daily spend is projected over (06)
 --                 cost_high_aws_usd        AWS spend that is suspicious at low views (DQ04)
 --                 recon_tolerance          absolute tolerance (credits) for 08 checks
 --               TABLE PARAM_ORPHAN_MARKERS (marker): owner values meaning "no owner",
@@ -30,6 +31,7 @@ SELECT
     3.5::DOUBLE      AS cost_robust_z,
     50::INTEGER      AS cost_low_views,
     300::DOUBLE      AS cost_high_aws_usd,
+    30::INTEGER      AS savings_days_per_month,
     0.000001::DOUBLE AS recon_tolerance;
 
 CREATE OR REPLACE TABLE PARAM_ORPHAN_MARKERS AS

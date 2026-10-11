@@ -340,23 +340,71 @@ export interface PerViewOutlier extends ViewerPerViewOutlier {
   fullyLoadedCostPerView: number;
 }
 
+/**
+ * A report with no owner at the replay's snapshot (an admin override wins), whatever its usage.
+ * Recommended action: reassign. Orphans carry no savings estimate (see ZombieReport).
+ */
+export interface ViewerOrphanedReport {
+  reportId: string;
+  reportName: string;
+  /** Effective owner used for scoping (override, else latest snapshot's owner). */
+  currentOwner: string | null;
+  snapshotIdx: number;
+  snapshotDate: string;
+  /** That snapshot's own owner; non-null only when an override set the report to no owner. */
+  snapshotOwner: string | null;
+  isOverridden: boolean;
+  views: number;
+  /** Also a zombie at this snapshot (views < COST_LOW_VIEWS). */
+  isZombie: boolean;
+}
+export interface OrphanedReport extends ViewerOrphanedReport {
+  /** This snapshot's attributed credits; null when quarantined (DQ02). */
+  attributedCredits: number | null;
+  snowflakeCostUsd: number | null;
+  totalAttributedCredits: number;
+  totalAttributedCostUsd: number;
+}
+
+/**
+ * A report almost nobody uses at the replay's snapshot (views < COST_LOW_VIEWS), owned or not.
+ * Recommended action: retire. The only source of estimated savings.
+ */
 export interface ViewerZombieReport {
   reportId: string;
   reportName: string;
   currentOwner: string | null;
-  latestSnapshotIdx: number;
-  latestViews: number;
-  reason: 'ORPHANED' | 'LOW_USAGE' | 'BOTH';
+  snapshotIdx: number;
+  snapshotDate: string;
+  /** Also unowned at this snapshot. */
+  isOrphaned: boolean;
+  views: number;
 }
 export interface ZombieReport extends ViewerZombieReport {
-  latestAttributedCredits: number;
-  latestSnowflakeCostUsd: number;
-  /** Latest snapshot's Snowflake cost × SAVINGS_DAYS_PER_MONTH: what retiring it might save a month. */
-  estimatedMonthlySavingsUsd: number;
-  /** The same estimate in credits: latest snapshot's attributed credits × SAVINGS_DAYS_PER_MONTH. */
-  estimatedMonthlySavingsCredits: number;
+  /** This snapshot's attributed credits; null when quarantined (DQ02). */
+  attributedCredits: number | null;
+  snowflakeCostUsd: number | null;
+  /** This snapshot's Snowflake cost × SAVINGS_DAYS_PER_MONTH; null when its cost is unknown. */
+  estimatedMonthlySavingsUsd: number | null;
+  /** The same estimate in credits. */
+  estimatedMonthlySavingsCredits: number | null;
   totalAttributedCredits: number;
   totalAttributedCostUsd: number;
+}
+
+/** Counts over the caller's scope at the replay's snapshot. */
+export interface ViewerAnomalyTotals {
+  orphanedCount: number;
+  zombieCount: number;
+  /** Reports in both lists. */
+  orphanedZombieCount: number;
+}
+export interface AnomalyTotals extends ViewerAnomalyTotals {
+  /** This snapshot's Snowflake cost of the orphaned reports (known costs only). */
+  orphanedSnowflakeCostUsd: number;
+  /** Sum of zombie savings (known costs only). Orphans never contribute. */
+  estimatedMonthlySavingsUsd: number;
+  estimatedMonthlySavingsCredits: number;
 }
 
 export interface ViewerAwsViewsMismatch {
@@ -386,16 +434,23 @@ export interface QuarantinedSnapshot extends ViewerQuarantinedSnapshot {
 }
 
 export interface ViewerAnomalyReport {
+  /** The replay's snapshot that `orphaned`, `zombies` and `totals` describe. */
+  snapshotIdx: number;
   perViewOutliers: ViewerPerViewOutlier[];
+  orphaned: ViewerOrphanedReport[];
   zombies: ViewerZombieReport[];
   awsViewsMismatch: ViewerAwsViewsMismatch[];
   quarantinedSnapshots: ViewerQuarantinedSnapshot[];
+  totals: ViewerAnomalyTotals;
 }
 export interface AnomalyReport {
+  snapshotIdx: number;
   perViewOutliers: PerViewOutlier[];
+  orphaned: OrphanedReport[];
   zombies: ZombieReport[];
   awsViewsMismatch: AwsViewsMismatch[];
   quarantinedSnapshots: QuarantinedSnapshot[];
+  totals: AnomalyTotals;
 }
 
 /** point_in_time: each snapshot charged to that snapshot's owner; current: to today's owner. */

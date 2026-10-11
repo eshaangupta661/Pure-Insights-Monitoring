@@ -818,6 +818,63 @@ components:
           required:
             - robustZ
             - fullyLoadedCostPerView
+    ViewerOrphanedReport:
+      type: object
+      properties:
+        reportId:
+          type: string
+        reportName:
+          type: string
+        currentOwner:
+          type: string
+          nullable: true
+        snapshotIdx:
+          type: integer
+        snapshotDate:
+          type: string
+          format: date
+          example: 2026-10-10
+        snapshotOwner:
+          type: string
+          nullable: true
+        isOverridden:
+          type: boolean
+        views:
+          type: integer
+        isZombie:
+          type: boolean
+      required:
+        - reportId
+        - reportName
+        - currentOwner
+        - snapshotIdx
+        - snapshotDate
+        - snapshotOwner
+        - isOverridden
+        - views
+        - isZombie
+    OrphanedReport:
+      allOf:
+        - $ref: "#/components/schemas/ViewerOrphanedReport"
+        - type: object
+          properties:
+            attributedCredits:
+              type: number
+              nullable: true
+            snowflakeCostUsd:
+              type: number
+              nullable: true
+              description: USD, unrounded
+            totalAttributedCredits:
+              type: number
+            totalAttributedCostUsd:
+              type: number
+              description: USD, unrounded
+          required:
+            - attributedCredits
+            - snowflakeCostUsd
+            - totalAttributedCredits
+            - totalAttributedCostUsd
     ViewerZombieReport:
       type: object
       properties:
@@ -828,46 +885,51 @@ components:
         currentOwner:
           type: string
           nullable: true
-        latestSnapshotIdx:
+        snapshotIdx:
           type: integer
-        latestViews:
-          type: integer
-        reason:
+        snapshotDate:
           type: string
-          enum:
-            - ORPHANED
-            - LOW_USAGE
-            - BOTH
+          format: date
+          example: 2026-10-10
+        isOrphaned:
+          type: boolean
+        views:
+          type: integer
       required:
         - reportId
         - reportName
         - currentOwner
-        - latestSnapshotIdx
-        - latestViews
-        - reason
+        - snapshotIdx
+        - snapshotDate
+        - isOrphaned
+        - views
     ZombieReport:
       allOf:
         - $ref: "#/components/schemas/ViewerZombieReport"
         - type: object
           properties:
-            latestAttributedCredits:
+            attributedCredits:
               type: number
-            latestSnowflakeCostUsd:
+              nullable: true
+            snowflakeCostUsd:
               type: number
+              nullable: true
               description: USD, unrounded
             estimatedMonthlySavingsUsd:
               type: number
+              nullable: true
               description: USD, unrounded
             estimatedMonthlySavingsCredits:
               type: number
+              nullable: true
             totalAttributedCredits:
               type: number
             totalAttributedCostUsd:
               type: number
               description: USD, unrounded
           required:
-            - latestAttributedCredits
-            - latestSnowflakeCostUsd
+            - attributedCredits
+            - snowflakeCostUsd
             - estimatedMonthlySavingsUsd
             - estimatedMonthlySavingsCredits
             - totalAttributedCredits
@@ -947,13 +1009,49 @@ components:
               type: number
           required:
             - rawCredits
+    ViewerAnomalyTotals:
+      type: object
+      properties:
+        orphanedCount:
+          type: integer
+        zombieCount:
+          type: integer
+        orphanedZombieCount:
+          type: integer
+      required:
+        - orphanedCount
+        - zombieCount
+        - orphanedZombieCount
+    AnomalyTotals:
+      allOf:
+        - $ref: "#/components/schemas/ViewerAnomalyTotals"
+        - type: object
+          properties:
+            orphanedSnowflakeCostUsd:
+              type: number
+              description: USD, unrounded
+            estimatedMonthlySavingsUsd:
+              type: number
+              description: USD, unrounded
+            estimatedMonthlySavingsCredits:
+              type: number
+          required:
+            - orphanedSnowflakeCostUsd
+            - estimatedMonthlySavingsUsd
+            - estimatedMonthlySavingsCredits
     AnomalyReport:
       type: object
       properties:
+        snapshotIdx:
+          type: integer
         perViewOutliers:
           type: array
           items:
             $ref: "#/components/schemas/PerViewOutlier"
+        orphaned:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrphanedReport"
         zombies:
           type: array
           items:
@@ -966,18 +1064,29 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/QuarantinedSnapshot"
+        totals:
+          $ref: "#/components/schemas/AnomalyTotals"
       required:
+        - snapshotIdx
         - perViewOutliers
+        - orphaned
         - zombies
         - awsViewsMismatch
         - quarantinedSnapshots
+        - totals
     ViewerAnomalyReport:
       type: object
       properties:
+        snapshotIdx:
+          type: integer
         perViewOutliers:
           type: array
           items:
             $ref: "#/components/schemas/ViewerPerViewOutlier"
+        orphaned:
+          type: array
+          items:
+            $ref: "#/components/schemas/ViewerOrphanedReport"
         zombies:
           type: array
           items:
@@ -990,11 +1099,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ViewerQuarantinedSnapshot"
+        totals:
+          $ref: "#/components/schemas/ViewerAnomalyTotals"
       required:
+        - snapshotIdx
         - perViewOutliers
+        - orphaned
         - zombies
         - awsViewsMismatch
         - quarantinedSnapshots
+        - totals
     ViewerChargebackRow:
       type: object
       properties:
@@ -1927,7 +2041,7 @@ paths:
       description: |-
         Roles: admin, owner, viewer.
 
-        Owners see only their reports (filtered in SQL); shares are over the rows in the caller’s scope. Viewers get rows without money or credits, plus the `totals` aggregates, and may not sort by cost (403). Four short, bounded sections (not paginated): per-view cost outliers, zombie reports (live: follows owner overrides), AWS-vs-views mismatches (DQ04) and quarantined negative-credit snapshots (DQ02). Admins and owners get each section most severe first; viewers get them by report and snapshot, without z-scores, since the order or a z-score would reveal per-report cost ranks.
+        Owners see only their reports (filtered in SQL); shares are over the rows in the caller’s scope. Viewers get rows without money or credits, plus the `totals` aggregates, and may not sort by cost (403). Short, bounded sections (not paginated): per-view cost outliers; orphaned reports (no owner at the replay snapshot, any usage: reassign) and zombie reports (views below COST_LOW_VIEWS at the replay snapshot, owned or not: retire), both live so owner overrides apply; AWS-vs-views mismatches (DQ04); and quarantined negative-credit snapshots (DQ02). Estimated savings come only from zombies; `totals` sums them. Admins and owners get each section most severe first; viewers get them by report and snapshot, without z-scores or money, since the order or a z-score would reveal per-report cost ranks.
       security:
         - cookieAuth: []
         - bearerAuth: []

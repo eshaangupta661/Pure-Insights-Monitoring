@@ -57,6 +57,10 @@ describe('SQL suite (real CSV → :memory:)', () => {
         ['G2_REPORT_RECOVERS_CREDITS_CLEAN', 'GROUND_TRUTH', 'PASS'],
         ['G3_QUARANTINED_HAVE_NO_QUERIES', 'GROUND_TRUTH', 'PASS'],
         ['G4_ALL_QUERIES_TAGGED', 'GROUND_TRUTH', 'PASS'],
+        ['K1_ORPHANED_EQ_DQ01', 'CONSISTENCY', 'PASS'],
+        ['K2_ZOMBIES_EQ_LOW_VIEWS', 'CONSISTENCY', 'PASS'],
+        ['K3_SAVINGS_EQ_ZOMBIE_QUERY_CREDITS', 'CONSISTENCY', 'PASS'],
+        ['K4_ORPHAN_ONLY_HAS_NO_SAVINGS', 'CONSISTENCY', 'PASS'],
       ]);
       for (const r of rows) {
         expect(r.abs_diff, r.check_id).not.toBeNull();
@@ -255,16 +259,43 @@ describe('SQL suite (real CSV → :memory:)', () => {
       expect(rows.filter((r) => r.reason === 'BOTH')).toHaveLength(15);
     });
 
-    it('17 zombie reports: orphaned or low-use, still spending in the latest snapshot', () => {
-      const rows = results.views.ANOMALY_ZOMBIE_REPORTS;
-      expect(rows).toHaveLength(17);
+    it('orphaned: the 245 snapshots with no owner (14 at the latest), any usage, no savings', () => {
+      const rows = results.views.ANOMALY_ORPHANED_REPORTS;
+      expect(rows).toHaveLength(245);
+      expect(rows.every((r) => r.snapshot_owner === null && !r.is_overridden)).toBe(true);
+      expect(rows.filter((r) => r.snapshot_idx === config.SNAPSHOT_COUNT - 1)).toHaveLength(14);
       for (const r of rows) {
-        expect(r.latest_snapshot_idx).toBe(config.SNAPSHOT_COUNT - 1);
-        expect(r.latest_attributed_credits).toBeGreaterThan(0);
-        const orphaned = r.current_owner === null;
-        const lowUse = r.latest_views < config.COST_LOW_VIEWS;
-        expect(r.reason).toBe(orphaned && lowUse ? 'BOTH' : orphaned ? 'ORPHANED' : 'LOW_USAGE');
+        expect(r.is_zombie).toBe(r.views < config.COST_LOW_VIEWS);
+        expect(r).not.toHaveProperty('estimated_monthly_savings_usd');
       }
+      // Any usage: orphans with plenty of views are listed too.
+      expect(rows.some((r) => r.views >= config.COST_LOW_VIEWS)).toBe(true);
+    });
+
+    it('zombies: the 68 low-view snapshots (5 at the latest), owned or not, with savings', () => {
+      const rows = results.views.ANOMALY_ZOMBIE_REPORTS;
+      expect(rows).toHaveLength(68);
+      expect(rows.filter((r) => r.snapshot_idx === config.SNAPSHOT_COUNT - 1)).toHaveLength(5);
+      expect(rows.every((r) => r.views < config.COST_LOW_VIEWS)).toBe(true);
+      expect(rows.some((r) => r.is_orphaned)).toBe(true);
+      expect(rows.some((r) => !r.is_orphaned)).toBe(true);
+      for (const r of rows) {
+        if (r.attributed_credits === null) {
+          // Quarantined credits (DQ02): unknown cost, so unknown savings, not 0.
+          expect(r.estimated_monthly_savings_credits).toBeNull();
+          expect(r.estimated_monthly_savings_usd).toBeNull();
+        } else {
+          expect(r.estimated_monthly_savings_credits).toBeCloseTo(
+            r.attributed_credits * config.SAVINGS_DAYS_PER_MONTH,
+            9,
+          );
+          expect(r.estimated_monthly_savings_usd).toBeCloseTo(
+            r.attributed_credits * config.CREDIT_PRICE_USD * config.SAVINGS_DAYS_PER_MONTH,
+            6,
+          );
+        }
+      }
+      expect(rows.filter((r) => r.attributed_credits === null)).toHaveLength(1);
     });
 
     it('cost-per-view outliers all exceed the robust-z threshold', () => {
@@ -291,7 +322,7 @@ describe('SQL suite (real CSV → :memory:)', () => {
       expect(r).toEqual({ n: 100, differ: 0, overridden: 0 });
     });
 
-    it('an override moves cost between owners in the live views; C1–C5 still PASS', async () => {
+    it('an override moves cost between owners in the live views; every check still PASSes', async () => {
       const { report_id: moved } = await one<{ report_id: string }>(
         `SELECT report_id FROM REPORTS WHERE current_owner = '${USER_3}' ORDER BY report_id LIMIT 1`,
       );
@@ -325,14 +356,17 @@ describe('SQL suite (real CSV → :memory:)', () => {
       expect((await chargebackLine('new.owner@company.com')).report_count).toBe(1);
       expect((await chargebackLine('UNOWNED')).report_count).toBe(13);
 
-      const zombie = await all<{ report_id: string; reason: string; current_owner: string }>(
+      // No longer orphaned at any snapshot (the override wins); a zombie row stays, now owned.
+      const orphanRows = await all<{ n: number }>(
         db.conn,
-        `SELECT report_id, reason, current_owner FROM ANOMALY_ZOMBIE_REPORTS WHERE report_id = '${orphaned}'`,
+        `SELECT count(*)::INTEGER AS n FROM ANOMALY_ORPHANED_REPORTS WHERE report_id = '${orphaned}'`,
       );
-      // No longer orphaned: either gone from the list or kept only for low usage.
-      expect(zombie.every((z) => z.reason === 'LOW_USAGE' && z.current_owner === USER_3)).toBe(
-        true,
+      expect(orphanRows[0]!.n).toBe(0);
+      const zombie = await all<{ is_orphaned: boolean; current_owner: string }>(
+        db.conn,
+        `SELECT is_orphaned, current_owner FROM ANOMALY_ZOMBIE_REPORTS WHERE report_id = '${orphaned}'`,
       );
+      expect(zombie.every((z) => !z.is_orphaned && z.current_owner === USER_3)).toBe(true);
 
       const recon = await all<{ check_id: string; status: string }>(
         db.conn,

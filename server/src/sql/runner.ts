@@ -33,6 +33,7 @@ export const SQL_SUITE: readonly { file: string; cache: readonly CachedView[] }[
     file: '06_anomalies.sql',
     cache: [
       'ANOMALY_COST_PER_VIEW',
+      'ANOMALY_ORPHANED_REPORTS',
       'ANOMALY_ZOMBIE_REPORTS',
       'ANOMALY_AWS_VIEWS_MISMATCH',
       'ANOMALY_NEGATIVE_CREDITS',

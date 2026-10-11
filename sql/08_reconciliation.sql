@@ -4,8 +4,9 @@
 --               the server refuses to start if any row is FAIL.
 -- Inputs      : SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY, QUERY_HOUR_COST and
 --               QUERY_ATTRIBUTED_COST (03), REPORT_ATTRIBUTION_DAILY and REPORT_ATTRIBUTION (04),
---               OWNER_CHARGEBACK and OWNER_CHARGEBACK_CURRENT (07), REPORT_SNAPSHOTS, REPORTS,
---               PARAMS
+--               OWNER_CHARGEBACK and OWNER_CHARGEBACK_CURRENT (07), ANOMALY_ORPHANED_REPORTS and
+--               ANOMALY_ZOMBIE_REPORTS (06), DQ_ROW_CHECKS (02), RAW_REPORT_SNAPSHOTS,
+--               REPORT_SNAPSHOTS, REPORTS, REPORT_CURRENT_OWNER (01), PARAMS
 -- Outputs     : VIEW RECONCILIATION
 --                 check_id, check_kind, description,
 --                 expected, actual, abs_diff = |actual − expected|,
@@ -23,6 +24,12 @@
 --                 (no queries for quarantined snapshots, every query tagged). On a real
 --                 account there is no ground truth: drop the G rows and keep the C rows;
 --                 untagged spend then shows up as the UNATTRIBUTED line.
+--   CONSISTENCY   The 06 orphaned / zombie split agrees with an independent recomputation from
+--                 the raw CSV text and the query log: K1 orphaned rows = DQ01 rows (override
+--                 aware), K2 zombie rows = raw rows with views < cost_low_views, K3 Σ zombie
+--                 savings = savings_days_per_month × query credits on those snapshots' days,
+--                 K4 orphaned rows that aren't zombies carry no savings (savings come only from
+--                 zombies). They hold on real logs too.
 -- Assumptions :
 --   * Totals are around 1.4M credits; float sums agree to far better than 1e-6 there.
 -- =============================================================================
@@ -86,6 +93,39 @@ quarantined_queries AS (
       ON d.report_id = s.report_id AND d.usage_date = s.snapshot_date
     WHERE s.credits_clean IS NULL
 ),
+-- K1–K4: the 06 split, recomputed without 05/06, over every snapshot.
+orphaned_expected AS (
+    SELECT COUNT_IF(CASE WHEN o.is_overridden THEN o.current_owner IS NULL ELSE d.dq01 END) AS n
+    FROM DQ_ROW_CHECKS d
+    JOIN REPORT_CURRENT_OWNER o ON o.report_id = d.report_id
+),
+orphaned_actual AS (
+    SELECT COUNT(*) AS n FROM ANOMALY_ORPHANED_REPORTS
+),
+zombies_expected AS (
+    SELECT COUNT(*) AS n
+    FROM RAW_REPORT_SNAPSHOTS r CROSS JOIN PARAMS p
+    WHERE CAST(r.monthly_active_views AS INTEGER) < p.cost_low_views
+),
+zombies_actual AS (
+    SELECT COUNT(*) AS n,
+           COALESCE(SUM(estimated_monthly_savings_credits), 0) AS savings_credits
+    FROM ANOMALY_ZOMBIE_REPORTS
+),
+zombie_query_credits AS (
+    SELECT COALESCE(SUM(q.attributed_credits), 0) * MAX(p.savings_days_per_month) AS savings_credits
+    FROM QUERY_ATTRIBUTED_COST q
+    JOIN REPORT_SNAPSHOTS s ON s.report_id = q.report_id AND s.snapshot_date = q.usage_date
+    CROSS JOIN PARAMS p
+    WHERE s.monthly_active_views < p.cost_low_views
+),
+orphan_only_savings AS (
+    SELECT COUNT(z.report_id) AS n
+    FROM ANOMALY_ORPHANED_REPORTS r
+    LEFT JOIN ANOMALY_ZOMBIE_REPORTS z
+      ON z.report_id = r.report_id AND z.snapshot_idx = r.snapshot_idx
+    WHERE NOT r.is_zombie
+),
 checks AS (
     SELECT 'C1_QUERIES_EQ_METERED' AS check_id, 'CONSERVATION' AS check_kind,
            'Σ credits attributed to queries = Σ metered warehouse credits' AS description,
@@ -126,6 +166,23 @@ checks AS (
     SELECT 'G4_ALL_QUERIES_TAGGED', 'GROUND_TRUTH',
            'Credits on untagged or unknown-report queries (expected 0: the simulator tags every query)',
            0, credits FROM unattributed
+    UNION ALL
+    SELECT 'K1_ORPHANED_EQ_DQ01', 'CONSISTENCY',
+           'ANOMALY_ORPHANED_REPORTS rows = DQ01 rows from the raw CSV (an override wins)',
+           e.n, a.n FROM orphaned_expected e CROSS JOIN orphaned_actual a
+    UNION ALL
+    SELECT 'K2_ZOMBIES_EQ_LOW_VIEWS', 'CONSISTENCY',
+           'ANOMALY_ZOMBIE_REPORTS rows = raw rows with views < cost_low_views',
+           e.n, a.n FROM zombies_expected e CROSS JOIN zombies_actual a
+    UNION ALL
+    SELECT 'K3_SAVINGS_EQ_ZOMBIE_QUERY_CREDITS', 'CONSISTENCY',
+           'Σ zombie estimated savings (credits) = savings_days_per_month × Σ query credits on zombie snapshots',
+           e.savings_credits, a.savings_credits
+    FROM zombie_query_credits e CROSS JOIN zombies_actual a
+    UNION ALL
+    SELECT 'K4_ORPHAN_ONLY_HAS_NO_SAVINGS', 'CONSISTENCY',
+           'Orphaned, non-zombie snapshots that appear in the savings view (expected 0)',
+           0, n FROM orphan_only_savings
 )
 SELECT
     c.check_id,

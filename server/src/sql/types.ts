@@ -74,17 +74,36 @@ export interface AnomalyCostPerViewRow {
   direction: 'HIGH' | 'LOW';
 }
 
+export interface AnomalyOrphanedRow {
+  report_id: string;
+  report_name: string;
+  snapshot_idx: number;
+  snapshot_date: string;
+  current_owner: string | null;
+  snapshot_owner: string | null;
+  is_overridden: boolean;
+  views: number;
+  attributed_credits: number | null;
+  snowflake_cost_usd: number | null;
+  is_zombie: boolean;
+  total_attributed_credits: number;
+  total_attributed_cost_usd: number;
+}
+
 export interface AnomalyZombieRow {
   report_id: string;
   report_name: string;
+  snapshot_idx: number;
+  snapshot_date: string;
   current_owner: string | null;
-  latest_snapshot_idx: number;
-  latest_views: number;
-  latest_attributed_credits: number;
-  latest_snowflake_cost_usd: number;
+  is_orphaned: boolean;
+  views: number;
+  attributed_credits: number | null;
+  snowflake_cost_usd: number | null;
+  estimated_monthly_savings_credits: number | null;
+  estimated_monthly_savings_usd: number | null;
   total_attributed_credits: number;
   total_attributed_cost_usd: number;
-  reason: 'ORPHANED' | 'LOW_USAGE' | 'BOTH';
 }
 
 export interface AnomalyAwsViewsMismatchRow {
@@ -123,7 +142,7 @@ export interface OwnerChargebackRow {
 
 export interface ReconciliationRow {
   check_id: string;
-  check_kind: 'CONSERVATION' | 'GROUND_TRUTH';
+  check_kind: 'CONSERVATION' | 'GROUND_TRUTH' | 'CONSISTENCY';
   description: string;
   expected: number | null;
   actual: number | null;
@@ -140,6 +159,7 @@ export interface SqlViewRows {
   UNIT_ECONOMICS_SNAPSHOT: UnitEconomicsSnapshotRow;
   UNIT_ECONOMICS_REPORT: UnitEconomicsReportRow;
   ANOMALY_COST_PER_VIEW: AnomalyCostPerViewRow;
+  ANOMALY_ORPHANED_REPORTS: AnomalyOrphanedRow;
   ANOMALY_ZOMBIE_REPORTS: AnomalyZombieRow;
   ANOMALY_AWS_VIEWS_MISMATCH: AnomalyAwsViewsMismatchRow;
   ANOMALY_NEGATIVE_CREDITS: AnomalyNegativeCreditsRow;

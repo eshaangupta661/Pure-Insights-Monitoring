@@ -104,16 +104,23 @@ export const costRoutes = [
     tag: 'costs',
     summary: 'Cost anomalies (/sql/06)',
     description:
-      `${COST_NOTE} Four short, bounded sections (not paginated): per-view cost outliers, ` +
-      'zombie reports (live: follows owner overrides), AWS-vs-views mismatches (DQ04) and ' +
-      'quarantined negative-credit snapshots (DQ02). Admins and owners get each section most ' +
-      'severe first; viewers get them by report and snapshot, without z-scores, since the order ' +
-      'or a z-score would reveal per-report cost ranks.',
+      `${COST_NOTE} Short, bounded sections (not paginated): per-view cost outliers; orphaned ` +
+      'reports (no owner at the replay snapshot, any usage: reassign) and zombie reports ' +
+      '(views below COST_LOW_VIEWS at the replay snapshot, owned or not: retire), both live so ' +
+      'owner overrides apply; AWS-vs-views mismatches (DQ04); and quarantined negative-credit ' +
+      'snapshots (DQ02). Estimated savings come only from zombies; `totals` sums them. Admins ' +
+      'and owners get each section most severe first; viewers get them by report and snapshot, ' +
+      'without z-scores or money, since the order or a z-score would reveal per-report cost ranks.',
     access: 'authenticated',
     response: anomalyReportSchema,
     viewerResponse: viewerAnomalyReportSchema,
     handler: ({ deps, user, scope }) =>
-      getAnomalies(deps.warehouse, scope, user.role === 'viewer' ? 'neutral' : 'severity'),
+      getAnomalies(
+        deps.warehouse,
+        scope,
+        deps.clock.tick(),
+        user.role === 'viewer' ? 'neutral' : 'severity',
+      ),
   }),
 
   defineRoute({
