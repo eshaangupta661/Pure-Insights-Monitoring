@@ -45,6 +45,8 @@ export const SQL_SUITE: readonly { file: string; cache: readonly CachedView[] }[
   { file: '09_period_to_date.sql', cache: ['PERIOD_TO_DATE', 'PERIOD_TO_DATE_CHECKS'] },
   // COST_DAILY_SERIES / COST_PROJECTION(_FIT) are grouped by current owner: read live.
   { file: '10_cost_projection.sql', cache: ['COST_PROJECTION_CHECKS'] },
+  // SYSTEM_HEALTH is grouped by current owner: read live.
+  { file: '11_system_health.sql', cache: ['SYSTEM_HEALTH_CHECKS'] },
 ];
 
 /** 00 and 01 run at ingest before the data loads; they are part of the fingerprint too. */
@@ -52,8 +54,13 @@ const SETUP_FILES = ['00_setup_parameters.sql', '01_schema.sql'];
 export const RESULTS_SCHEMA = 'SQL_RESULTS';
 export const FINGERPRINT_TABLE = 'SUITE_FINGERPRINT';
 const CACHED_VIEWS: readonly CachedView[] = SQL_SUITE.flatMap((s) => s.cache);
-/** PASS/FAIL check views with RECONCILIATION's columns (08, 09, 10). */
-const CHECK_VIEWS = ['RECONCILIATION', 'PERIOD_TO_DATE_CHECKS', 'COST_PROJECTION_CHECKS'] as const;
+/** PASS/FAIL check views with RECONCILIATION's columns (08, 09, 10, 11). */
+const CHECK_VIEWS = [
+  'RECONCILIATION',
+  'PERIOD_TO_DATE_CHECKS',
+  'COST_PROJECTION_CHECKS',
+  'SYSTEM_HEALTH_CHECKS',
+] as const;
 /** Stored first and verified before anything else is stored. */
 const VERIFIED_VIEWS: readonly CachedView[] = [...CHECK_VIEWS, 'DQ_CHECKS'];
 

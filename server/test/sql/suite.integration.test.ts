@@ -67,6 +67,17 @@ describe('SQL suite (real CSV → :memory:)', () => {
       ]);
     });
 
+    it('passes every system-health check (11)', () => {
+      expect(
+        results.views.SYSTEM_HEALTH_CHECKS.map((r) => [r.check_id, r.check_kind, r.status]),
+      ).toEqual([
+        ['H1_PERIOD_SUCCESS_EQ_PERIOD_TO_DATE', 'CONSISTENCY', 'PASS'],
+        ['H2_OWNER_ROWS_SUM_TO_PORTFOLIO', 'CONSISTENCY', 'PASS'],
+        ['H3_RATES_WITHIN_ZERO_AND_ONE', 'CONSISTENCY', 'PASS'],
+        ['H4_SLOW_PLUS_FAST_EQ_TOTAL', 'CONSISTENCY', 'PASS'],
+      ]);
+    });
+
     it('PERIOD_TO_DATE: one portfolio row per snapshot plus owner rows; profiled data facts', () => {
       const all = results.views.PERIOD_TO_DATE.filter((r) => r.scope_kind === 'ALL');
       expect(all.map((r) => r.period_end_idx).sort((a, b) => a - b)).toEqual(
@@ -489,7 +500,7 @@ describe('SQL suite (real CSV → :memory:)', () => {
 
     it('the fingerprint changes with any /sql file edit or PARAMS value', () => {
       const inputs = currentFingerprintInputs();
-      expect(Object.keys(inputs.sql)).toHaveLength(11); // 00–10
+      expect(Object.keys(inputs.sql)).toHaveLength(12); // 00–10
       expect(inputs.params).toMatchObject({
         SIMULATED_OVERHEAD_RATE: 0.15,
         ORPHAN_OWNER_MARKERS: config.ORPHAN_OWNER_MARKERS,

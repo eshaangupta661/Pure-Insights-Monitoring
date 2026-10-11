@@ -19,6 +19,7 @@ and locally against DuckDB through four small, documented translations.
 | `08_reconciliation.sql`     | `RECONCILIATION`                                                                                                                        | PASS/FAIL checks; any FAIL stops the build and the server                                                                                                         |
 | `09_period_to_date.sql`     | `PERIOD_SNAPSHOT_ROWS`, `PERIOD_TO_DATE`, `PERIOD_TO_DATE_CHECKS`                                                                       | KPIs over snapshots 0..N for every N, portfolio and per current owner; checks P1–P5 (verified like 08)                                                            |
 | `10_cost_projection.sql`    | `COST_DAILY_SERIES`, `COST_PROJECTION_FIT`, `COST_PROJECTION`, `COST_PROJECTION_CHECKS`                                                 | Daily Snowflake cost per scope; linear trend (REGR_SLOPE/REGR_INTERCEPT) over 0..N, forecast N+1..last with ±1.96σ band, month-end projection, MAPE; checks F1–F4 |
+| `11_system_health.sql`      | `SYSTEM_HEALTH`, `SYSTEM_HEALTH_CHECKS` | Refresh-success, within-15 s and ownership-coverage rates for Today (N) and Period (0..N) with the N-1 rate, portfolio and per current owner; checks H1-H4 |
 
 Every file starts with a header covering purpose, inputs, output columns and assumptions.
 
@@ -26,7 +27,7 @@ Every file starts with a header covering purpose, inputs, output columns and ass
 02–10. Every statement in 02–10 is `CREATE OR REPLACE`, so re-running is idempotent, and later
 files build on earlier ones. 02 and 04–09 create views. 09 has its own check view,
 `PERIOD_TO_DATE_CHECKS` (P1–P5, same columns as `RECONCILIATION`), which ingest and startup
-verify like 08's: any FAIL stops both. 10 does the same with `COST_PROJECTION_CHECKS` (F1–F4).
+verify like 08's: any FAIL stops both. 10 does the same with `COST_PROJECTION_CHECKS` (F1–F4); 11 does the same with `SYSTEM_HEALTH_CHECKS` (H1–H4).
 03 materializes query-level cost as two
 **tables**. Every downstream file reads that layer, and as a view its range join (83k queries
 against hourly metering) would be re-derived inside each of them. Inlined like that, 08 alone

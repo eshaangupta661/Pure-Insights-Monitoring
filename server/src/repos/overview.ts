@@ -6,6 +6,7 @@ import type {
   OverviewTrend,
   PeriodOverview,
   RefreshCounts,
+  SystemHealth,
 } from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
 import { config } from '../config.js';
@@ -24,6 +25,74 @@ interface OverviewRow extends RefreshCounts {
   attributedCostUsd: number;
   snapshotSnowflakeCostUsd: number;
   snapshotAwsCostUsd: number;
+}
+
+interface HealthRow {
+  total: number;
+  success: number;
+  fast: number;
+  owned: number;
+  refreshRate: number | null;
+  fastRate: number | null;
+  ownedRate: number | null;
+  prevRefreshRate: number | null;
+  prevFastRate: number | null;
+  prevOwnedRate: number | null;
+}
+
+/**
+ * The three health rings at snapshot `tick` from SYSTEM_HEALTH (/sql/11; live because rows are
+ * grouped by current owner), on the `today` or `period` basis. An owner with no reports has no
+ * row: empty rings, not an error.
+ */
+export async function getSystemHealth(
+  db: Queryable,
+  scope: Scope,
+  tick: number,
+  basis: 'today' | 'period',
+): Promise<SystemHealth> {
+  const params: DuckDBValue[] = [tick];
+  const where =
+    scope.kind === 'all'
+      ? `scope_kind = 'ALL'`
+      : `scope_kind = 'OWNER' AND ${scopeSql(scope, 'current_owner', params)}`;
+  const b = basis;
+  const [row] = await db.query<HealthRow>(
+    `SELECT ${b}_total            AS "total",
+            ${b}_success          AS "success",
+            ${b}_fast             AS "fast",
+            ${b}_owned            AS "owned",
+            ${b}_refresh_rate     AS "refreshRate",
+            ${b}_fast_rate        AS "fastRate",
+            ${b}_owned_rate       AS "ownedRate",
+            prev_${b}_refresh_rate AS "prevRefreshRate",
+            prev_${b}_fast_rate    AS "prevFastRate",
+            prev_${b}_owned_rate   AS "prevOwnedRate"
+     FROM SYSTEM_HEALTH
+     WHERE snapshot_idx = $1 AND ${where}`,
+    params,
+  );
+  const total = row?.total ?? 0;
+  return {
+    refresh: {
+      count: row?.success ?? 0,
+      total,
+      rate: row?.refreshRate ?? null,
+      previousRate: row?.prevRefreshRate ?? null,
+    },
+    latency: {
+      count: row?.fast ?? 0,
+      total,
+      rate: row?.fastRate ?? null,
+      previousRate: row?.prevFastRate ?? null,
+    },
+    ownership: {
+      count: row?.owned ?? 0,
+      total,
+      rate: row?.ownedRate ?? null,
+      previousRate: row?.prevOwnedRate ?? null,
+    },
+  };
 }
 
 /** KPIs for the snapshot at `tick`, over the reports in scope. Alert counts come from the engine. */
@@ -58,6 +127,7 @@ export async function getOverview(
     params,
   );
   if (!row) throw new Error('overview query returned no row');
+  const health = await getSystemHealth(db, scope, tick, 'today');
 
   return {
     scope: 'today',
@@ -77,6 +147,7 @@ export async function getOverview(
     avgLoadTimeSec: row.avgLoadTimeSec,
     maxLoadTimeSec: row.maxLoadTimeSec,
     totalViews: row.totalViews,
+    health,
     totals: {
       attributedCostUsd: row.attributedCostUsd,
       snapshotSnowflakeCostUsd: row.snapshotSnowflakeCostUsd,
@@ -131,6 +202,7 @@ export async function getPeriodOverview(
     params,
   );
   // An owner with no reports has no row: an empty period, not an error.
+  const health = await getSystemHealth(db, scope, tick, 'period');
   return {
     scope: 'period',
     tick,
@@ -151,6 +223,7 @@ export async function getPeriodOverview(
     quarantinedSnapshotCount: row?.quarantinedSnapshotCount ?? 0,
     avgLoadTimeSec: row?.avgLoadTimeSec ?? null,
     p95LoadTimeSec: row?.p95LoadTimeSec ?? null,
+    health,
     totals: { snowflakeCostToDateUsd: row?.snowflakeCostToDateUsd ?? 0 },
   };
 }

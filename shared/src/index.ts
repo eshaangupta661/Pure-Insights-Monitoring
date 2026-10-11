@@ -144,6 +144,29 @@ export interface OverviewCostTotals {
 export type OverviewScope = 'today' | 'period';
 
 /** GET /overview (scope=today, the default): the replay's current snapshot, scoped to the caller. */
+/** One ring of the Overview "System health" card: `count` of `total` report snapshots. */
+export interface HealthRing {
+  count: number;
+  total: number;
+  /** count / total (0..1); null with no reports. */
+  rate: number | null;
+  /** The same rate one snapshot earlier (period: over 0..N-1); null at snapshot 0. */
+  previousRate: number | null;
+}
+
+/**
+ * The three health rates behind the Overview rings, from /sql/11_system_health.sql. On the
+ * Today basis the total is the reports at snapshot N; on Period it is every report snapshot 0..N.
+ */
+export interface SystemHealth {
+  /** SUCCESS refreshes (UNKNOWN is not a success). */
+  refresh: HealthRing;
+  /** Load time <= LATENCY_WARNING_SEC (the complement of "slow"). */
+  latency: HealthRing;
+  /** Report snapshots with an owner (an admin override wins). */
+  ownership: HealthRing;
+}
+
 export interface OverviewKpis {
   scope: 'today';
   tick: number;
@@ -158,6 +181,7 @@ export interface OverviewKpis {
   avgLoadTimeSec: number | null;
   maxLoadTimeSec: number | null;
   totalViews: number;
+  health: SystemHealth;
   alerts: ActiveAlertCounts;
   totals: OverviewCostTotals;
 }
@@ -190,6 +214,7 @@ export interface PeriodOverview {
   avgLoadTimeSec: number | null;
   /** 95th percentile (linear interpolation) over every report snapshot in the period. */
   p95LoadTimeSec: number | null;
+  health: SystemHealth;
   totals: PeriodCostTotals;
 }
 

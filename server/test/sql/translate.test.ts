@@ -119,7 +119,7 @@ describe('the /sql suite', () => {
     .filter((f) => f.endsWith('.sql'))
     .sort();
 
-  it('has the numbered files 00–10', () => {
+  it('has the numbered files 00–11', () => {
     expect(files.map((f) => f.slice(0, 2))).toEqual([
       '00',
       '01',
@@ -132,6 +132,7 @@ describe('the /sql suite', () => {
       '08',
       '09',
       '10',
+      '11',
     ]);
   });
 

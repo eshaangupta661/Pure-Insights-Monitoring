@@ -195,6 +195,7 @@ export interface SqlViewRows {
   PERIOD_TO_DATE: PeriodToDateRow;
   PERIOD_TO_DATE_CHECKS: ReconciliationRow;
   COST_PROJECTION_CHECKS: ReconciliationRow;
+  SYSTEM_HEALTH_CHECKS: ReconciliationRow;
 }
 
 export type CachedView = keyof SqlViewRows;

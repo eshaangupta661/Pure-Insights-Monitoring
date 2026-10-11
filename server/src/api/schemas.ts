@@ -291,6 +291,19 @@ export const overviewQuerySchema = z.object({
     .openapi({ description: 'today = the replay snapshot N; period = snapshots 0..N' }),
 });
 
+const healthRingSchema = z
+  .object({
+    count: z.number().int(),
+    total: z.number().int(),
+    rate: z.number().nullable(),
+    previousRate: z.number().nullable(),
+  })
+  .openapi('HealthRing');
+
+export const systemHealthSchema = z
+  .object({ refresh: healthRingSchema, latency: healthRingSchema, ownership: healthRingSchema })
+  .openapi('SystemHealth', { description: 'Aggregates; visible to every role' });
+
 export const overviewSchema = z
   .object({
     scope: z.literal('today'),
@@ -310,6 +323,7 @@ export const overviewSchema = z
     avgLoadTimeSec: z.number().nullable(),
     maxLoadTimeSec: z.number().nullable(),
     totalViews: z.number().int(),
+    health: systemHealthSchema,
     alerts: activeAlertCountsSchema,
     totals: z
       .object({
@@ -343,6 +357,7 @@ export const periodOverviewSchema = z
     quarantinedSnapshotCount: z.number().int(),
     avgLoadTimeSec: z.number().nullable(),
     p95LoadTimeSec: z.number().nullable(),
+    health: systemHealthSchema,
     totals: z
       .object({ snowflakeCostToDateUsd: usd })
       .openapi('PeriodCostTotals', { description: 'Aggregates; visible to every role' }),

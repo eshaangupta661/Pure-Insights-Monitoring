@@ -18,6 +18,7 @@ import type {
   RefreshStatus,
 } from '@pic/shared';
 import { useOverview, usePeriodOverview, useTrend } from '../api/queries';
+import { SystemHealthCard } from '../components/SystemHealthCard';
 import { Card, EmptyState, ErrorState, SeverityBadge, Skeleton } from '../components/ui';
 import { formatInt, formatPercent, formatSeconds, formatUsd } from '../lib/format';
 import { useOverviewScope } from '../lib/overviewScope';
@@ -385,6 +386,14 @@ export default function OverviewPage() {
         : overview.data && (
             <KpiTiles kpis={overview.data} warningSec={trend.data?.thresholds.warningSec} />
           )}
+
+      {kpis.data && (
+        <SystemHealthCard
+          health={kpis.data.health}
+          basis={isPeriod ? 'period' : 'today'}
+          warningSec={trend.data?.thresholds.warningSec}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Refresh status by snapshot" subtitle="Reports per status, all snapshots">

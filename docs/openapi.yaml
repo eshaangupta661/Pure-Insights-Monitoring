@@ -113,6 +113,38 @@ components:
       example:
         email: admin@pureinsights.dev
         password: Admin@123
+    HealthRing:
+      type: object
+      properties:
+        count:
+          type: integer
+        total:
+          type: integer
+        rate:
+          type: number
+          nullable: true
+        previousRate:
+          type: number
+          nullable: true
+      required:
+        - count
+        - total
+        - rate
+        - previousRate
+    SystemHealth:
+      type: object
+      properties:
+        refresh:
+          $ref: "#/components/schemas/HealthRing"
+        latency:
+          $ref: "#/components/schemas/HealthRing"
+        ownership:
+          $ref: "#/components/schemas/HealthRing"
+      required:
+        - refresh
+        - latency
+        - ownership
+      description: Aggregates; visible to every role
     ActiveAlertCounts:
       type: object
       properties:
@@ -199,6 +231,8 @@ components:
           nullable: true
         totalViews:
           type: integer
+        health:
+          $ref: "#/components/schemas/SystemHealth"
         alerts:
           $ref: "#/components/schemas/ActiveAlertCounts"
         totals:
@@ -216,6 +250,7 @@ components:
         - avgLoadTimeSec
         - maxLoadTimeSec
         - totalViews
+        - health
         - alerts
         - totals
     PeriodCostTotals:
@@ -281,6 +316,8 @@ components:
         p95LoadTimeSec:
           type: number
           nullable: true
+        health:
+          $ref: "#/components/schemas/SystemHealth"
         totals:
           $ref: "#/components/schemas/PeriodCostTotals"
       required:
@@ -298,6 +335,7 @@ components:
         - quarantinedSnapshotCount
         - avgLoadTimeSec
         - p95LoadTimeSec
+        - health
         - totals
     OverviewResponse:
       oneOf:
