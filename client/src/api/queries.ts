@@ -3,6 +3,9 @@ import type { OverviewKpis, OverviewTrend } from '@pic/shared';
 import { api } from './http';
 
 export const OVERVIEW_KEY = ['overview'] as const;
+export const ALERTS_KEY = ['alerts'] as const;
+export const REPORTS_KEY = ['reports'] as const;
+export const REPLAY_KEY = ['replay'] as const;
 export const TREND_KEY = ['overview', 'trend'] as const;
 
 export function useOverview() {

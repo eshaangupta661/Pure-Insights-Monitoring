@@ -1,6 +1,6 @@
 import { AlertTriangle, Info, OctagonAlert, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Role, Severity } from '@pic/shared';
+import type { RefreshStatus, Role, Severity } from '@pic/shared';
 
 export function Card({
   title,
@@ -83,3 +83,72 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-gray-100 ${className}`} aria-hidden />;
 }
+
+const REFRESH_LABEL: Record<RefreshStatus, string> = {
+  SUCCESS: 'Success',
+  FAILED: 'Failed',
+  TIMED_OUT: 'Timed out',
+  UNKNOWN: 'Unknown',
+};
+export const refreshLabel = (s: RefreshStatus): string => REFRESH_LABEL[s];
+
+/** Refresh status as text with a small dot; failures are red only because they raise CRITICAL alerts. */
+export function RefreshBadge({ status }: { status: RefreshStatus }) {
+  const dot =
+    status === 'SUCCESS' ? 'bg-gray-400' : status === 'UNKNOWN' ? 'bg-gray-300' : 'bg-critical';
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+      <span className={`size-2 rounded-full ${dot}`} aria-hidden />
+      {REFRESH_LABEL[status]}
+    </span>
+  );
+}
+
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPage: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
+  const btn =
+    'rounded border border-gray-300 bg-white px-2.5 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white';
+  return (
+    <div className="flex items-center justify-between gap-3 pt-3 text-xs text-gray-500">
+      <span className="tabular-nums">
+        {from}–{to} of {total}
+      </span>
+      <span className="flex items-center gap-2">
+        <button type="button" className={btn} disabled={page <= 1} onClick={() => onPage(page - 1)}>
+          Previous
+        </button>
+        <span className="tabular-nums">
+          {page} / {pages}
+        </span>
+        <button
+          type="button"
+          className={btn}
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
+          Next
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Shared control styling so selects, inputs and buttons match. */
+export const controlClass =
+  'rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50';
+export const primaryButtonClass =
+  'rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong disabled:opacity-50';
+export const secondaryButtonClass =
+  'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50';

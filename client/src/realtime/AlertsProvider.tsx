@@ -20,7 +20,7 @@ import {
   type ServerToClientEvents,
   type TickEvent,
 } from '@pic/shared';
-import { OVERVIEW_KEY, TREND_KEY } from '../api/queries';
+import { ALERTS_KEY, OVERVIEW_KEY, REPLAY_KEY, REPORTS_KEY, TREND_KEY } from '../api/queries';
 import { ApiRequestError, api } from '../api/http';
 import { useAuth } from '../auth/AuthProvider';
 import { useToast } from '../toast/ToastProvider';
@@ -44,6 +44,7 @@ const AlertsContext = createContext<AlertsState | null>(null);
 
 /** Critical alerts arriving within this window share one toast. */
 const TOAST_BATCH_MS = 400;
+const REFRESH_DEBOUNCE_MS = 300;
 
 const SEVERITY_RANK = { CRITICAL: 0, WARNING: 1, INFO: 2 } as const;
 
@@ -122,7 +123,17 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
       toasted.add(key);
       pendingCritical.push(alert);
       clearTimeout(flushTimer);
+      clearTimeout(refreshTimer);
       flushTimer = setTimeout(flushToasts, TOAST_BATCH_MS);
+    };
+    // Pages that list alerts or reports over REST refetch shortly after the live state changes.
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshLists = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ALERTS_KEY });
+        void queryClient.invalidateQueries({ queryKey: REPORTS_KEY });
+      }, REFRESH_DEBOUNCE_MS);
     };
     const upsert = (alert: Alert) =>
       setById((prev) => {
@@ -135,21 +146,26 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
     // Alerts already active when the socket (re)connects are not news: remember, don't toast.
     socket.on('alert:snapshot', (alerts) => {
       version++;
+      refreshLists();
       for (const a of alerts) toasted.add(`${a.id}:${a.severity}`);
       setById(new Map(alerts.map((a) => [a.id, a])));
     });
     socket.on('alert:opened', (alert) => {
       version++;
+      refreshLists();
       upsert(alert);
       maybeToast(alert);
     });
     socket.on('alert:updated', (alert) => {
       version++;
+      refreshLists();
       upsert(alert);
       maybeToast(alert); // an escalation to CRITICAL is news
     });
     socket.on('tick', (event) => {
       setTick(event);
+      refreshLists();
+      void queryClient.invalidateQueries({ queryKey: REPLAY_KEY });
       void queryClient.invalidateQueries({ queryKey: TREND_KEY });
     });
     socket.on('kpi:update', (kpis: OverviewKpis) => {
@@ -194,6 +210,7 @@ export function AlertsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       clearTimeout(flushTimer);
+      clearTimeout(refreshTimer);
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
