@@ -6,15 +6,26 @@ real-time WebSocket alerts.
 
 **Live demo:** https://pure-insights-command-center.onrender.com
 
-**About the data:** the source CSV holds 100 dashboards across 20 daily snapshots. The app replays
-those snapshots on a clock to simulate a live environment, so alerts and KPIs change as it runs.
-
 **Walkthrough** (all five pages, then filters, report detail, replay controls, incident injection and acknowledge):
 
 ![Pure Insights Command Center walkthrough](docs/assets/demo.gif)
 
 > Free Render tier: the service sleeps when idle, so the first load may take ~1 min. The app
 > shows "Waking up the server..." until it responds.
+
+## How the live simulation works
+
+The source data is a CSV of 100 dashboards captured over **20 daily snapshots** (2,000 rows). The
+dataset has no dates, so the app assumes the first snapshot is **21 Sep 2026** and the last is
+**10 Oct 2026** (one snapshot per day). To behave like a live environment, a replay clock steps
+through those 20 snapshots, advancing one every 10 seconds and looping back to the first after the
+last. Alerts, KPIs and cost figures change as it runs, and the header shows the current position
+(for example "Snapshot 15/20"). Admins can pause, resume or speed up the replay, and inject incidents.
+
+Most pages offer two views. **Today** shows the current snapshot only (one day: its refresh status,
+latency, owners and cost). **Period** shows the period to date, aggregating snapshot 1 through the
+current one (for example 21 Sep to 5 Oct), so you can see trends such as total Snowflake cost,
+reports that were ever orphaned, and average and p95 load time.
 
 ## Demo credentials
 
@@ -26,6 +37,42 @@ or redeploy.
 | admin  | `admin@pureinsights.dev` | `Admin@123`  | everything: assign owners, acknowledge any alert, replay controls, inject incidents, audit log  |
 | owner  | `user_3@company.com`     | `Owner@123`  | only reports they currently own; acknowledge their alerts; full cost for those reports          |
 | viewer | `viewer@pureinsights.dev` | `Viewer@123` | read-only; cost shown as portfolio aggregates only (no per-report dollars)                      |
+
+## Screenshots
+
+Captured from the live demo as admin. Figures change with the replay position.
+
+**Overview, Today view** (current snapshot):
+
+![Overview, Today view](docs/assets/overview-today.jpg)
+
+**Overview, Period view** (period to date, snapshots 1 to the current one):
+
+![Overview, Period view](docs/assets/overview-period.jpg)
+
+**Real-time CRITICAL alert pop-up** (acknowledge, view report or mute):
+
+![Critical alert pop-up](docs/assets/popup.jpg)
+
+**Alerts** (severity filters, grouping, bulk acknowledge):
+
+![Alerts page](docs/assets/alerts.jpg)
+
+**Reports:**
+
+![Reports page](docs/assets/reports.jpg)
+
+**Cost Attribution** (Snowflake and AWS cost, forecast with 95% band):
+
+![Cost Attribution](docs/assets/cost-attribution.jpg)
+
+**Orphaned and zombie reports** (cost attribution):
+
+![Orphaned and zombie reports](docs/assets/cost-orphaned-zombie.jpg)
+
+**Data Quality** (rule results, severity and treatment):
+
+![Data Quality](docs/assets/data-quality.jpg)
 
 ## Evaluator's guide
 
