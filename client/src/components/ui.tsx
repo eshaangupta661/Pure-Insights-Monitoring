@@ -1,6 +1,7 @@
-import { AlertTriangle, Info, OctagonAlert, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, FileCode, Info, OctagonAlert, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { RefreshStatus, Role, Severity } from '@pic/shared';
+import { sqlFileUrl } from '../lib/links';
 
 export function Card({
   title,
@@ -152,3 +153,45 @@ export const primaryButtonClass =
   'rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-strong disabled:opacity-50';
 export const secondaryButtonClass =
   'rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50';
+
+/** A small link to the /sql file that produced a widget's numbers. */
+export function SqlLink({ file }: { file: string }) {
+  return (
+    <a
+      href={sqlFileUrl(file)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Open sql/${file}`}
+      className="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-0.5 font-mono text-xs text-gray-500 hover:border-accent hover:text-accent"
+    >
+      <FileCode className="size-3" aria-hidden />
+      SQL
+    </a>
+  );
+}
+
+/** Card with the title row carrying the widget's SQL link on the right. */
+export function Widget({
+  title,
+  subtitle,
+  sql,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  sql: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <header className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium text-gray-900">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+        </div>
+        <SqlLink file={sql} />
+      </header>
+      {children}
+    </section>
+  );
+}

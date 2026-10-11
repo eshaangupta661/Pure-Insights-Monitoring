@@ -15,3 +15,8 @@ export const formatUsd = (v: number): string => (Math.abs(v) >= 1000 ? usd0 : us
 export const formatInt = (v: number): string => int.format(v);
 export const formatSeconds = (v: number | null): string => (v === null ? '—' : `${v.toFixed(1)} s`);
 export const formatPercent = (ratio: number): string => `${Math.round(ratio * 100)}%`;
+
+const credits = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+export const formatCredits = (v: number): string => credits.format(v);
+export const formatShare = (ratio: number | null): string =>
+  ratio === null ? '—' : `${(ratio * 100).toFixed(1)}%`;
