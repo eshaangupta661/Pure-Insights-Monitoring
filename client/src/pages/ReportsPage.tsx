@@ -14,6 +14,7 @@ import {
   Skeleton,
   controlClass,
   refreshLabel,
+  OwnerCell,
 } from '../components/ui';
 import { formatInt, formatSeconds } from '../lib/format';
 import { useDebounced } from '../lib/useDebounced';
@@ -239,7 +240,7 @@ export default function ReportsPage() {
                         className={`${STICKY} bg-white`}
                       />
                       <th scope="col" className="py-2 pr-3 text-left font-medium whitespace-nowrap">
-                        Owner at snapshot
+                        Owner
                       </th>
                       <SortHeader
                         label="Refresh"
@@ -297,14 +298,7 @@ export default function ReportsPage() {
                           <span className="block text-xs text-gray-500">{r.reportId}</span>
                         </td>
                         <td className="py-2 pr-3 whitespace-nowrap text-gray-700">
-                          {r.snapshotOwner ?? (
-                            <span className="text-gray-500 italic">No owner</span>
-                          )}
-                          {r.isOverridden && (
-                            <span className="block text-xs text-gray-500">
-                              Current owner (override): {r.currentOwner ?? 'no owner'}
-                            </span>
-                          )}
+                          <OwnerCell report={r} />
                         </td>
                         <td className="py-2 pr-3 whitespace-nowrap">
                           <RefreshBadge status={r.refreshStatus} />

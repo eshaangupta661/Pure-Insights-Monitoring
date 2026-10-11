@@ -2,7 +2,15 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Check, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { Alert, AlertRuleId, AlertSort, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
+import type {
+  Alert,
+  AlertRuleId,
+  AlertSort,
+  AlertStatus,
+  BulkAckResult,
+  Page,
+  Severity,
+} from '@pic/shared';
 import { api } from '../api/http';
 import { ALERTS_KEY, OVERVIEW_KEY } from '../api/queries';
 import {
@@ -479,7 +487,9 @@ export default function AlertsPage() {
             <select
               className={controlClass}
               value={sort}
-              onChange={(e) => setFilter('sort', e.target.value === 'severity' ? '' : e.target.value)}
+              onChange={(e) =>
+                setFilter('sort', e.target.value === 'severity' ? '' : e.target.value)
+              }
             >
               <option value="severity">Severity (worst first)</option>
               <option value="report">Report number</option>

@@ -15,6 +15,7 @@ import {
   primaryButtonClass,
   refreshLabel,
   secondaryButtonClass,
+  OwnerCell,
 } from '../components/ui';
 import { formatInt, formatSeconds, formatUsd } from '../lib/format';
 import { STATUS_ORDER, STATUS_STYLE } from '../lib/status';
@@ -138,16 +139,16 @@ function DrawerBody({ report }: { report: Detail }) {
     <div className="px-5 pb-6">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 pb-4 text-sm">
         <div>
-          <dt className="text-xs text-gray-500">Owner at snapshot {report.snapshotIdx + 1}</dt>
+          <dt className="text-xs text-gray-500">Owner</dt>
           <dd className="text-gray-900">
-            {report.snapshotOwner ?? <span className="italic">No owner</span>}
+            <OwnerCell report={report} showData={false} />
           </dd>
         </div>
         {report.isOverridden && (
           <div>
-            <dt className="text-xs text-gray-500">Current owner (override)</dt>
-            <dd className="text-gray-900">
-              {report.currentOwner ?? <span className="italic">No owner</span>}
+            <dt className="text-xs text-gray-500">In data at snapshot {report.snapshotIdx + 1}</dt>
+            <dd className="text-gray-700">
+              {report.snapshotOwner ?? <span className="italic">No owner</span>}
             </dd>
           </div>
         )}
@@ -261,6 +262,19 @@ function DrawerBody({ report }: { report: Detail }) {
 
       <Section title="Owner history">
         <ol className="space-y-1 text-sm">
+          {report.override && (
+            <li className="flex justify-between gap-3">
+              <span
+                className={report.override.ownerEmail ? 'text-gray-900' : 'text-gray-500 italic'}
+              >
+                {report.override.ownerEmail ?? 'No owner'}
+                <span className="ml-1 text-xs text-gray-500 not-italic">(now)</span>
+              </span>
+              <span className="shrink-0 text-xs font-medium text-accent-strong">
+                Assigned by {report.override.setBy}
+              </span>
+            </li>
+          )}
           {ownerRuns(report.ownerHistory, report.snapshotIdx).map((run) => (
             <li
               key={run.from}
@@ -268,9 +282,11 @@ function DrawerBody({ report }: { report: Detail }) {
             >
               <span className={run.owner ? 'text-gray-800' : 'text-gray-500 italic'}>
                 {run.owner ?? 'No owner'}
-                {run.from <= report.snapshotIdx && report.snapshotIdx <= run.to && (
-                  <span className="ml-1 text-xs text-gray-500 not-italic">(now)</span>
-                )}
+                {!report.isOverridden &&
+                  run.from <= report.snapshotIdx &&
+                  report.snapshotIdx <= run.to && (
+                    <span className="ml-1 text-xs text-gray-500 not-italic">(now)</span>
+                  )}
               </span>
               <span className="shrink-0 text-xs text-gray-500 tabular-nums">
                 {run.from === run.to
@@ -283,9 +299,9 @@ function DrawerBody({ report }: { report: Detail }) {
         </ol>
         {report.override && (
           <p className="mt-2 text-xs text-gray-500">
-            Current owner (override) set by {report.override.setBy}
-            {report.override.reason ? `: ${report.override.reason}` : ''}. Access and alerts follow
-            the override; the history above is unchanged.
+            {report.override.reason ? `Reason: ${report.override.reason}. ` : ''}The assigned owner
+            now owns the report: access, alerts and current chargeback follow it. The data's history
+            below the assignment is kept unchanged.
           </p>
         )}
       </Section>

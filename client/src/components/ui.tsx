@@ -47,6 +47,40 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   );
 }
 
+/**
+ * The owner a report has now: an admin assignment wins over the data's owner at the snapshot.
+ * Assigned owners carry an "Assigned" tag; `showData` adds the data's owner underneath.
+ */
+export function OwnerCell({
+  report,
+  showData = true,
+}: {
+  report: { snapshotOwner: string | null; currentOwner: string | null; isOverridden: boolean };
+  showData?: boolean;
+}) {
+  const owner = report.isOverridden ? report.currentOwner : report.snapshotOwner;
+  return (
+    <>
+      <span className="inline-flex items-center gap-1.5">
+        {owner ?? <span className="text-gray-500 italic">No owner</span>}
+        {report.isOverridden && (
+          <span
+            className="rounded bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent-strong not-italic"
+            title="Assigned by an admin; overrides the owner in the data"
+          >
+            Assigned
+          </span>
+        )}
+      </span>
+      {showData && report.isOverridden && report.snapshotOwner !== owner && (
+        <span className="block text-xs text-gray-500">
+          In data: {report.snapshotOwner ?? 'no owner'}
+        </span>
+      )}
+    </>
+  );
+}
+
 export function RoleBadge({ role }: { role: Role }) {
   return (
     <span className="rounded-full border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-700 capitalize">
