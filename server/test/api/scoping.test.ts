@@ -100,6 +100,15 @@ describe('owner scoping (user_3, who owns 11 reports)', () => {
     expect(k.totals.attributedCostUsd).toBeCloseTo(sum, 6);
   });
 
+  it('GET /overview/trend counts only their reports', async () => {
+    const t = (await owner.get('/api/v1/overview/trend')).body;
+    const total = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0);
+    expect(
+      t.points.every((p: { refresh: Record<string, number> }) => total(p.refresh) === 11),
+    ).toBe(true);
+    expect(t.latency.reduce((a: number, b: { count: number }) => a + b.count, 0)).toBe(11);
+  });
+
   it('GET /costs/reports and /costs/unit-economics: only their reports, full cost, shares over their scope', async () => {
     const costs = await owner.get('/api/v1/costs/reports?pageSize=100');
     expect(costs.body.total).toBe(11);

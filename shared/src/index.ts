@@ -134,6 +134,35 @@ export interface OverviewKpis {
   totals: OverviewCostTotals;
 }
 
+/** One snapshot's refresh-status counts over the reports in scope (GET /overview/trend). */
+export interface TrendPoint {
+  snapshotIdx: number;
+  snapshotDate: string;
+  refresh: RefreshCounts;
+  /** Reports above LATENCY_WARNING_SEC at this snapshot. */
+  slowCount: number;
+}
+
+/** A load-time histogram bucket: lowerSec <= load time < upperSec (null = open-ended). */
+export interface LatencyBucket {
+  lowerSec: number;
+  upperSec: number | null;
+  count: number;
+}
+
+/**
+ * GET /overview/trend: every snapshot's refresh counts, and the load-time histogram of the
+ * replay's current snapshot (bucket edges from LATENCY_BUCKET_EDGES_SEC), over the caller's scope.
+ */
+export interface OverviewTrend {
+  /** The replay's current snapshot; later points are what the replay has yet to reach. */
+  currentIdx: number;
+  points: TrendPoint[];
+  latency: LatencyBucket[];
+  /** Load times above these are WARNING / CRITICAL (LATENCY_WARNING_SEC / _CRITICAL_SEC). */
+  thresholds: { warningSec: number; criticalSec: number };
+}
+
 /** A report at the replay's current snapshot, as every role sees it. */
 export interface ViewerReportSummary {
   reportId: string;

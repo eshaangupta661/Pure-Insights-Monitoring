@@ -1,6 +1,7 @@
 import {
   dataQualitySchema,
   overviewSchema,
+  overviewTrendSchema,
   ownerOverrideBodySchema,
   reportDetailSchema,
   reportIdParamsSchema,
@@ -13,6 +14,7 @@ import { notFound } from '../http/errors.js';
 import { pageSchema } from '../http/pagination.js';
 import { defineRoute } from '../http/route.js';
 import { getDataQuality } from '../repos/dataQuality.js';
+import { getOverviewTrend } from '../repos/overview.js';
 import { setOwnerOverride } from '../repos/owners.js';
 import { getReport, listReports } from '../repos/reports.js';
 
@@ -33,6 +35,20 @@ export const reportRoutes = [
     response: overviewSchema,
     viewerResponse: overviewSchema,
     handler: ({ deps, scope }) => deps.realtime.overview(scope),
+  }),
+
+  defineRoute({
+    method: 'get',
+    path: '/overview/trend',
+    tag: 'reports',
+    summary: 'Refresh-status trend and load-time histogram',
+    description:
+      `${SCOPE_NOTE} \`points\` has one entry per snapshot (all of them, so the client can show ` +
+      'where the replay is); `latency` is the load-time histogram of the current snapshot.',
+    access: 'authenticated',
+    response: overviewTrendSchema,
+    viewerResponse: overviewTrendSchema,
+    handler: ({ deps, scope }) => getOverviewTrend(deps.warehouse, scope, deps.clock.tick()),
   }),
 
   defineRoute({

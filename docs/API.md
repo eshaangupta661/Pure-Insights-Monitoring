@@ -54,7 +54,7 @@ curl -b jar 'https://<host>/api/v1/reports?pageSize=5'
 | endpoint                                                                               | admin |    owner    |       viewer        | anonymous |
 | -------------------------------------------------------------------------------------- | :---: | :---------: | :-----------------: | :-------: |
 | `POST /auth/login`, `POST /auth/logout`                                                |   ✓   |      ✓      |          ✓          |     ✓     |
-| `GET /auth/me`, `/overview`, `/reports`, `/reports/:id`, `/data-quality`, `/alerts`    |   ✓   | own reports | ✓ (no per-report $) |    401    |
+| `GET /auth/me`, `/overview`, `/overview/trend`, `/reports`, `/reports/:id`, `/data-quality`, `/alerts`    |   ✓   | own reports | ✓ (no per-report $) |    401    |
 | `GET /costs/reports`, `/costs/unit-economics`, `/costs/anomalies`, `/costs/chargeback` |   ✓   | own reports |   aggregates only   |    401    |
 | `GET /costs/chargeback?view=point_in_time`                                             |   ✓   |     403     |   aggregates only   |    401    |
 | `PATCH /reports/:id/owner`                                                             |   ✓   |     403     |         403         |    401    |
@@ -142,6 +142,9 @@ snapshots.
   counts, slow and critical-slow counts, average and max load time, views, active alert counts
   by severity, and `totals` (attributed Snowflake cost over all snapshots, plus this snapshot's
   Snowflake and AWS cost).
+- `GET /overview/trend` returns `points` (refresh-status counts and slow count for every
+  snapshot, over the caller's scope), `currentIdx` (the replay's snapshot) and `latency` (a
+  load-time histogram of the current snapshot; bucket edges are `LATENCY_BUCKET_EDGES_SEC`).
 - `GET /reports?q=&status=&orphaned=&slow=&sort=&order=&page=&pageSize=`
   - `q`: substring of id, name or current owner.
   - `status`: `SUCCESS | FAILED | TIMED_OUT | UNKNOWN`.

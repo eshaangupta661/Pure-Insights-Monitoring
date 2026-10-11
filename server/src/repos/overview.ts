@@ -1,5 +1,5 @@
 import type { DuckDBValue } from '@duckdb/node-api';
-import type { OverviewKpis, RefreshCounts } from '@pic/shared';
+import type { LatencyBucket, OverviewKpis, OverviewTrend, RefreshCounts } from '@pic/shared';
 import { scopeSql, type Scope } from '../auth/scope.js';
 import { config } from '../config.js';
 import type { Queryable } from '../data/warehouse.js';
@@ -73,6 +73,79 @@ export async function getOverview(
       attributedCostUsd: row.attributedCostUsd,
       snapshotSnowflakeCostUsd: row.snapshotSnowflakeCostUsd,
       snapshotAwsCostUsd: row.snapshotAwsCostUsd,
+    },
+  };
+}
+
+interface TrendRow extends RefreshCounts {
+  snapshotIdx: number;
+  slowCount: number;
+}
+
+/** Counts load times into [0, e1), [e1, e2) … [eN, ∞) for the edges in `edges` (ascending). */
+export function bucketLatencies(
+  loadTimes: readonly number[],
+  edges: readonly number[],
+): LatencyBucket[] {
+  const buckets: LatencyBucket[] = [0, ...edges].map((lowerSec, i) => ({
+    lowerSec,
+    upperSec: edges[i] ?? null,
+    count: 0,
+  }));
+  for (const t of loadTimes) {
+    const i = edges.filter((edge) => t >= edge).length;
+    buckets[i]!.count += 1;
+  }
+  return buckets;
+}
+
+/** Refresh counts for every snapshot, and the load-time histogram at `tick`, over the scope. */
+export async function getOverviewTrend(
+  db: Queryable,
+  scope: Scope,
+  tick: number,
+): Promise<OverviewTrend> {
+  const trendParams: DuckDBValue[] = [config.LATENCY_WARNING_SEC];
+  const rows = await db.query<TrendRow>(
+    `SELECT
+       s.snapshot_idx::INTEGER                                        AS "snapshotIdx",
+       COUNT_IF(s.last_refresh_status = 'SUCCESS')::INTEGER           AS "SUCCESS",
+       COUNT_IF(s.last_refresh_status = 'FAILED')::INTEGER            AS "FAILED",
+       COUNT_IF(s.last_refresh_status = 'TIMED_OUT')::INTEGER         AS "TIMED_OUT",
+       COUNT_IF(s.last_refresh_status = 'UNKNOWN')::INTEGER           AS "UNKNOWN",
+       COUNT_IF(s.avg_load_time_sec > $1)::INTEGER                    AS "slowCount"
+     FROM REPORT_SNAPSHOTS s
+     JOIN REPORT_CURRENT_OWNER o ON o.report_id = s.report_id
+     WHERE ${scopeSql(scope, 'o.current_owner', trendParams)}
+     GROUP BY s.snapshot_idx
+     ORDER BY s.snapshot_idx`,
+    trendParams,
+  );
+
+  const loadParams: DuckDBValue[] = [tick];
+  const loads = await db.query<{ loadTimeSec: number }>(
+    `SELECT s.avg_load_time_sec AS "loadTimeSec"
+     FROM REPORT_SNAPSHOTS s
+     JOIN REPORT_CURRENT_OWNER o ON o.report_id = s.report_id
+     WHERE s.snapshot_idx = $1 AND ${scopeSql(scope, 'o.current_owner', loadParams)}`,
+    loadParams,
+  );
+
+  return {
+    currentIdx: tick,
+    points: rows.map((r) => ({
+      snapshotIdx: r.snapshotIdx,
+      snapshotDate: snapshotDateFor(r.snapshotIdx),
+      refresh: { SUCCESS: r.SUCCESS, FAILED: r.FAILED, TIMED_OUT: r.TIMED_OUT, UNKNOWN: r.UNKNOWN },
+      slowCount: r.slowCount,
+    })),
+    latency: bucketLatencies(
+      loads.map((l) => l.loadTimeSec),
+      config.LATENCY_BUCKET_EDGES_SEC,
+    ),
+    thresholds: {
+      warningSec: config.LATENCY_WARNING_SEC,
+      criticalSec: config.LATENCY_CRITICAL_SEC,
     },
   };
 }

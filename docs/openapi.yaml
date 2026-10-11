@@ -213,6 +213,76 @@ components:
         - totalViews
         - alerts
         - totals
+    OverviewTrend:
+      type: object
+      properties:
+        currentIdx:
+          type: integer
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              snapshotIdx:
+                type: integer
+              snapshotDate:
+                type: string
+                format: date
+                example: 2026-10-10
+              refresh:
+                type: object
+                properties:
+                  SUCCESS:
+                    type: integer
+                  FAILED:
+                    type: integer
+                  TIMED_OUT:
+                    type: integer
+                  UNKNOWN:
+                    type: integer
+                required:
+                  - SUCCESS
+                  - FAILED
+                  - TIMED_OUT
+                  - UNKNOWN
+              slowCount:
+                type: integer
+            required:
+              - snapshotIdx
+              - snapshotDate
+              - refresh
+              - slowCount
+        latency:
+          type: array
+          items:
+            type: object
+            properties:
+              lowerSec:
+                type: number
+              upperSec:
+                type: number
+                nullable: true
+              count:
+                type: integer
+            required:
+              - lowerSec
+              - upperSec
+              - count
+        thresholds:
+          type: object
+          properties:
+            warningSec:
+              type: number
+            criticalSec:
+              type: number
+          required:
+            - warningSec
+            - criticalSec
+      required:
+        - currentIdx
+        - points
+        - latency
+        - thresholds
     RefreshStatus:
       type: string
       enum:
@@ -1289,6 +1359,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OverviewKpis"
+        "401":
+          description: "UNAUTHENTICATED: no valid session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /api/v1/overview/trend:
+    get:
+      tags:
+        - reports
+      summary: Refresh-status trend and load-time histogram
+      description: |-
+        Roles: admin, owner, viewer.
+
+        Owners see only reports whose current owner is their email (filtered in SQL). Viewers get the same rows without cost fields. `points` has one entry per snapshot (all of them, so the client can show where the replay is); `latency` is the load-time histogram of the current snapshot.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      x-roles:
+        - admin
+        - owner
+        - viewer
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewTrend"
         "401":
           description: "UNAUTHENTICATED: no valid session"
           content:

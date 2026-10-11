@@ -43,6 +43,7 @@ import type {
   DqRuleId,
   LoginResponse,
   OverviewKpis,
+  OverviewTrend,
   OwnerOverrideInfo,
   RefreshStatus,
   ReportCost,
@@ -253,6 +254,36 @@ export const overviewSchema = z
   })
   .openapi('OverviewKpis');
 assertTrue<AssertEqual<z.infer<typeof overviewSchema>, OverviewKpis>>();
+
+const refreshCountsSchema = z.object({
+  SUCCESS: z.number().int(),
+  FAILED: z.number().int(),
+  TIMED_OUT: z.number().int(),
+  UNKNOWN: z.number().int(),
+});
+
+export const overviewTrendSchema = z
+  .object({
+    currentIdx: z.number().int(),
+    points: z.array(
+      z.object({
+        snapshotIdx: z.number().int(),
+        snapshotDate: isoDate,
+        refresh: refreshCountsSchema,
+        slowCount: z.number().int(),
+      }),
+    ),
+    latency: z.array(
+      z.object({
+        lowerSec: z.number(),
+        upperSec: z.number().nullable(),
+        count: z.number().int(),
+      }),
+    ),
+    thresholds: z.object({ warningSec: z.number(), criticalSec: z.number() }),
+  })
+  .openapi('OverviewTrend');
+assertTrue<AssertEqual<z.infer<typeof overviewTrendSchema>, OverviewTrend>>();
 
 // ---- reports ----------------------------------------------------------------------------
 

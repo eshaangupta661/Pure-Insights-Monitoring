@@ -172,6 +172,23 @@ describe('reports API (admin)', () => {
     });
   });
 
+  describe('GET /overview/trend', () => {
+    it('has a point per snapshot and a histogram that sums to the report count', async () => {
+      const res = await admin.get('/api/v1/overview/trend');
+      expect(res.status).toBe(200);
+      expect(res.body.currentIdx).toBe(LATEST_TICK);
+      expect(res.body.points).toHaveLength(config.SNAPSHOT_COUNT);
+      const last = res.body.points[LATEST_TICK];
+      expect(last.refresh.FAILED).toBe(await count(`s.last_refresh_status = 'FAILED'`));
+      expect(last.slowCount).toBe(
+        await count(`s.avg_load_time_sec > ${config.LATENCY_WARNING_SEC}`),
+      );
+      const sum = (xs: { count: number }[]) => xs.reduce((a, b) => a + b.count, 0);
+      expect(sum(res.body.latency)).toBe(100);
+      expect(res.body.latency).toHaveLength(config.LATENCY_BUCKET_EDGES_SEC.length + 1);
+    });
+  });
+
   describe('GET /data-quality', () => {
     it('unscoped counts and samples equal data/dq_summary.json; SQL checks all PASS', async () => {
       const summary = JSON.parse(fs.readFileSync(DQ_SUMMARY_PATH, 'utf8')) as DqSummary;
