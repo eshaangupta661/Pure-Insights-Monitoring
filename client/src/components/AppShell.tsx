@@ -1,4 +1,5 @@
 import {
+  Activity,
   BarChart3,
   Bell,
   DatabaseZap,
@@ -19,6 +20,7 @@ import { useAlerts, type ConnectionStatus } from '../realtime/AlertsProvider';
 import AdminControls from './AdminControls';
 import CriticalPopup from './CriticalPopup';
 import NotificationBell from './NotificationBell';
+import Popover from './Popover';
 import { RoleBadge } from './ui';
 
 interface NavItem {
@@ -44,35 +46,26 @@ const STATUS: Record<ConnectionStatus, { label: string; dot: string }> = {
   offline: { label: 'Offline', dot: 'bg-red-500' },
 };
 
-function ConnectionDot() {
-  const { status } = useAlerts();
-  const { label, dot } = STATUS[status];
-  return (
-    <span
-      className="flex items-center gap-1.5 text-xs text-gray-600"
-      role="status"
-      title={`Live alerts: ${label}`}
-    >
-      <span className={`size-2 rounded-full ${dot}`} aria-hidden />
-      <span className="hidden sm:inline">{label}</span>
-    </span>
-  );
-}
-
-/** "Snapshot 7/20 · live". The total comes from the API (one trend point per snapshot). */
-function TickIndicator() {
+/** One pill for connection + replay position: "● Live · Snapshot 7/20". */
+function LiveStatus() {
   const { tick, status } = useAlerts();
   const total = useTrend().data?.points.length;
-  if (!tick) return <span className="text-xs text-gray-400">Snapshot —</span>;
-  const state = status !== 'connected' ? 'not live' : tick.paused ? 'paused' : 'live';
+  const { label, dot } = STATUS[status];
+  const state = status !== 'connected' ? label : tick?.paused ? 'Paused' : 'Live';
   return (
     <span
-      className="text-xs text-gray-700 tabular-nums"
-      title={`Snapshot date ${tick.snapshotDate}`}
+      className="flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 tabular-nums"
+      role="status"
+      title={`Live alerts: ${label}${tick ? ` · snapshot date ${tick.snapshotDate}` : ''}`}
     >
-      Snapshot {tick.tick + 1}
-      {total ? `/${total}` : ''} ·{' '}
-      <span className={state === 'live' ? 'text-accent' : 'text-gray-500'}>{state}</span>
+      <span className={`size-2 rounded-full ${dot}`} aria-hidden />
+      <span className="font-medium">{state}</span>
+      {tick && (
+        <span className="hidden text-gray-500 sm:inline">
+          Snapshot {tick.tick + 1}
+          {total ? `/${total}` : ''}
+        </span>
+      )}
     </span>
   );
 }
@@ -81,6 +74,14 @@ function TickIndicator() {
  * Today / Period-to-date switch. Today = the replay's snapshot N; period = snapshots 1..N.
  * The choice lives in the URL (?scope=) so it can be shared and survives a reload.
  */
+function Avatar({ email }: { email: string }) {
+  return (
+    <span className="flex size-7 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-strong uppercase">
+      {email.charAt(0)}
+    </span>
+  );
+}
+
 function ScopeSwitch() {
   const { tick } = useAlerts();
   const { scope, setScope } = useOverviewScope();
@@ -94,35 +95,30 @@ function ScopeSwitch() {
     },
   ];
   return (
-    <div className="flex items-center gap-2">
-      <div
-        role="radiogroup"
-        aria-label="Time range"
-        className="inline-flex rounded-md border border-gray-300 bg-gray-50 p-0.5 text-xs"
-      >
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={scope === o.value}
-            onClick={() => setScope(o.value)}
-            className={`rounded px-2 py-1 whitespace-nowrap tabular-nums ${
-              scope === o.value
-                ? 'bg-white font-medium text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <span className="sm:hidden">{o.short}</span>
-            <span className="hidden sm:inline">{o.long}</span>
-          </button>
-        ))}
-      </div>
-      {scope === 'period' && pathname !== '/' && (
-        <span className="hidden text-xs text-gray-500 xl:inline">
-          Period view applies to Overview
-        </span>
-      )}
+    <div
+      role="radiogroup"
+      aria-label="Time range"
+      className="inline-flex rounded-lg bg-gray-100 p-0.5 text-xs"
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={scope === o.value}
+          title={
+            o.long + (o.value === 'period' && pathname !== '/' ? ' (applies to Overview)' : '')
+          }
+          onClick={() => setScope(o.value)}
+          className={`rounded-md px-3 py-1 whitespace-nowrap ${
+            scope === o.value
+              ? 'bg-white font-medium text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          {o.short}
+        </button>
+      ))}
     </div>
   );
 }
@@ -168,7 +164,12 @@ export default function AppShell() {
         }`}
       >
         <div className="flex h-14 items-center justify-between border-b border-gray-200 px-4">
-          <span className="text-sm font-semibold text-gray-900">Pure Insights</span>
+          <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <span className="flex size-6 items-center justify-center rounded-md bg-accent text-white">
+              <Activity className="size-3.5" aria-hidden />
+            </span>
+            Pure Insights
+          </span>
           <button
             type="button"
             className="rounded p-1 text-gray-500 hover:bg-gray-100 lg:hidden"
@@ -208,7 +209,7 @@ export default function AppShell() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4 md:px-6">
           <button
             type="button"
             className="rounded p-1 text-gray-600 hover:bg-gray-100 lg:hidden"
@@ -217,23 +218,33 @@ export default function AppShell() {
           >
             <Menu className="size-5" />
           </button>
-          <TickIndicator />
-          <ConnectionDot />
+          <LiveStatus />
           <ScopeSwitch />
-          {user.role === 'admin' && <AdminControls />}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-1">
+            {user.role === 'admin' && <AdminControls />}
             <NotificationBell />
-            <span className="hidden text-xs text-gray-500 xl:inline">{user.email}</span>
-            <RoleBadge role={user.role} />
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="flex items-center gap-1 rounded p-1 text-xs text-gray-600 hover:bg-gray-100"
-              aria-label="Sign out"
+            <Popover
+              label={<Avatar email={user.email} />}
+              ariaLabel="Account menu"
+              panelClass="w-64 p-1"
+              triggerClass="!px-1.5"
             >
-              <LogOut className="size-4" aria-hidden />
-              <span className="hidden sm:inline">Sign out</span>
-            </button>
+              <div className="px-3 py-2">
+                <p className="truncate text-sm font-medium text-gray-900">{user.email}</p>
+                <div className="mt-1">
+                  <RoleBadge role={user.role} />
+                </div>
+              </div>
+              <hr className="my-1 border-gray-200" />
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                <LogOut className="size-4" aria-hidden />
+                Sign out
+              </button>
+            </Popover>
           </div>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">

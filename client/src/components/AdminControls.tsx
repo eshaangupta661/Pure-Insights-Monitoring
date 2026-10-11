@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, SkipForward, Siren } from 'lucide-react';
+import { Clapperboard, Pause, Play, SkipForward, Siren } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import type {
   Alert,
@@ -13,9 +13,10 @@ import type {
 import { api } from '../api/http';
 import { ALERTS_KEY, REPLAY_KEY } from '../api/queries';
 import Modal from './Modal';
+import Popover from './Popover';
 import { controlClass, primaryButtonClass, secondaryButtonClass } from './ui';
 
-/** Pause/resume and speed of the replay clock (admin only; the server enforces it too). */
+/** Pause/resume, speed and skip of the replay clock (admin only; the server enforces it too). */
 export function ReplayControls() {
   const queryClient = useQueryClient();
   const replay = useQuery({
@@ -30,25 +31,40 @@ export function ReplayControls() {
   const state = replay.data;
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="hidden text-xs font-medium tracking-wide text-gray-500 uppercase xl:inline">
-        Replay
-      </span>
-      <button
-        type="button"
-        className={`${secondaryButtonClass} flex items-center gap-1.5`}
-        disabled={!state || send.isPending}
-        onClick={() => send.mutate({ action: state?.paused ? 'resume' : 'pause' })}
-      >
-        {state?.paused ? (
-          <Play className="size-3.5" aria-hidden />
-        ) : (
-          <Pause className="size-3.5" aria-hidden />
-        )}
-        {state?.paused ? 'Resume' : 'Pause'}
-      </button>
-      <label className="flex items-center gap-1.5 text-sm text-gray-700">
-        <span className="hidden sm:inline">Speed</span>
+    <div className="grid gap-3">
+      {state && (
+        <p className="text-xs text-gray-500">
+          {state.paused ? 'Paused' : 'Running'} · one snapshot per{' '}
+          {state.tickMs / 1000 / state.speed} s
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={`${secondaryButtonClass} flex flex-1 items-center justify-center gap-1.5`}
+          disabled={!state || send.isPending}
+          onClick={() => send.mutate({ action: state?.paused ? 'resume' : 'pause' })}
+        >
+          {state?.paused ? (
+            <Play className="size-3.5" aria-hidden />
+          ) : (
+            <Pause className="size-3.5" aria-hidden />
+          )}
+          {state?.paused ? 'Resume' : 'Pause'}
+        </button>
+        <button
+          type="button"
+          className={`${secondaryButtonClass} flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap`}
+          disabled={!state || send.isPending}
+          onClick={() => send.mutate({ action: 'jump_to_end' })}
+          title="Skip to the last snapshot and pause there"
+        >
+          <SkipForward className="size-3.5" aria-hidden />
+          Skip to last
+        </button>
+      </div>
+      <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
+        Speed
         <select
           className={controlClass}
           disabled={!state || send.isPending}
@@ -62,23 +78,6 @@ export function ReplayControls() {
           ))}
         </select>
       </label>
-      <button
-        type="button"
-        className={`${secondaryButtonClass} flex items-center gap-1.5 whitespace-nowrap`}
-        disabled={!state || send.isPending}
-        onClick={() => send.mutate({ action: 'jump_to_end' })}
-        title="Skip to the last snapshot and pause there"
-        aria-label="Skip to the last snapshot and pause"
-      >
-        <SkipForward className="size-3.5" aria-hidden />
-        <span className="hidden lg:inline">Skip to last</span>
-      </button>
-      {state && (
-        <span className="hidden text-xs whitespace-nowrap text-gray-500 2xl:inline">
-          {state.paused ? 'Paused' : 'Running'} · one snapshot per{' '}
-          {state.tickMs / 1000 / state.speed} s
-        </span>
-      )}
       {(replay.isError || send.isError) && (
         <span role="alert" className="text-xs text-critical">
           {(send.error ?? replay.error)?.message}
@@ -195,22 +194,28 @@ function IncidentDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Admin-only header controls: replay pause/speed and the incident dialog. */
+/** Admin-only header menu: replay controls and the incident dialog, behind one button. */
 export default function AdminControls() {
-  const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState(false);
   return (
-    <div className="flex items-center gap-2">
-      <ReplayControls />
-      <button
-        type="button"
-        className={`${secondaryButtonClass} flex items-center gap-1.5 whitespace-nowrap`}
-        onClick={() => setOpen(true)}
-        aria-label="Inject incident"
+    <>
+      <Popover
+        label="Replay"
+        icon={<Clapperboard className="size-4" aria-hidden />}
+        panelClass="w-64 p-3"
       >
-        <Siren className="size-3.5" aria-hidden />
-        <span className="hidden lg:inline">Inject incident</span>
-      </button>
-      {open && <IncidentDialog onClose={() => setOpen(false)} />}
-    </div>
+        <ReplayControls />
+        <hr className="my-3 border-gray-200" />
+        <button
+          type="button"
+          className={`${secondaryButtonClass} flex w-full items-center justify-center gap-1.5`}
+          onClick={() => setDialog(true)}
+        >
+          <Siren className="size-3.5" aria-hidden />
+          Inject incident
+        </button>
+      </Popover>
+      {dialog && <IncidentDialog onClose={() => setDialog(false)} />}
+    </>
   );
 }
