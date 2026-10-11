@@ -203,8 +203,10 @@ Lifecycle: `OPEN → ACKNOWLEDGED → RESOLVED`.
 - **Live updates:** every change (opened, escalated, acknowledged, resolved) is pushed over
   Socket.IO, scoped like the REST responses. See [WEBSOCKET.md](WEBSOCKET.md).
 
-- `GET /alerts?status=&severity=&page=&pageSize=` lists the current cycle's alerts: active
-  first, then most severe, then most recently seen.
+- `GET /alerts?status=&severity=&resolved=&q=&page=&pageSize=` lists the current cycle's alerts:
+  active first, then most severe, then most recently seen. `resolved=false` leaves out RESOLVED
+  alerts (the default includes them; the UI sends it unless "Show resolved" is on). `q` is a
+  case-insensitive substring of the report id or name.
 - `POST /alerts/:id/ack` (admin, or owner for their own reports) moves an alert OPEN →
   ACKNOWLEDGED and is idempotent. It returns 404 for an alert outside your scope and 409 once
   the alert has resolved. The ack is audit-logged and then broadcast as `alert:updated`; the

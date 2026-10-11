@@ -115,6 +115,10 @@ describe('costs API', () => {
       const orphanZombies = a.zombies.filter((z) => z.reason !== 'LOW_USAGE');
       expect(orphanZombies.every((z) => z.currentOwner === null)).toBe(true);
       for (const z of a.zombies) {
+        expect(z.estimatedMonthlySavingsCredits).toBeCloseTo(
+          z.latestAttributedCredits * config.SAVINGS_DAYS_PER_MONTH,
+          9,
+        );
         expect(z.estimatedMonthlySavingsUsd).toBeCloseTo(
           z.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
           9,

@@ -851,6 +851,8 @@ components:
             estimatedMonthlySavingsUsd:
               type: number
               description: USD, unrounded
+            estimatedMonthlySavingsCredits:
+              type: number
             totalAttributedCredits:
               type: number
             totalAttributedCostUsd:
@@ -860,6 +862,7 @@ components:
             - latestAttributedCredits
             - latestSnowflakeCostUsd
             - estimatedMonthlySavingsUsd
+            - estimatedMonthlySavingsCredits
             - totalAttributedCredits
             - totalAttributedCostUsd
     ViewerAwsViewsMismatch:
@@ -2103,6 +2106,20 @@ paths:
             $ref: "#/components/schemas/Severity"
           required: false
           name: severity
+          in: query
+        - schema:
+            type: string
+            enum: *a1
+            description: false = leave out RESOLVED alerts (the default is to include them)
+          required: false
+          name: resolved
+          in: query
+        - schema:
+            type: string
+            maxLength: 100
+            description: Case-insensitive substring of the report id or name
+          required: false
+          name: q
           in: query
       responses:
         "200":

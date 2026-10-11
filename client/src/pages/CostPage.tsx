@@ -25,6 +25,7 @@ import {
   ErrorState,
   Pagination,
   Skeleton,
+  InfoTip,
   Widget,
   controlClass,
 } from '../components/ui';
@@ -302,9 +303,27 @@ const ZOMBIE_REASON: Record<Redactable['reason'], string> = {
   BOTH: 'No owner, low usage',
 };
 
+/**
+ * The savings assumptions, read back from the API's own numbers (nothing is hard-coded here):
+ * days = estimate / latest cost, price per credit = latest cost / latest credits.
+ */
+function savingsAssumptions(priced: ZombieReport[]): { days: number; usdPerCredit: number } | null {
+  const z = priced.find((r) => r.latestSnowflakeCostUsd > 0 && r.latestAttributedCredits > 0);
+  if (!z) return null;
+  return {
+    days: Math.round(z.estimatedMonthlySavingsUsd / z.latestSnowflakeCostUsd),
+    usdPerCredit: z.latestSnowflakeCostUsd / z.latestAttributedCredits,
+  };
+}
+
 function Zombies({ zombies }: { zombies: Redactable[] }) {
   const priced = zombies.filter(zombieHasMoney);
   const total = priced.reduce((a, z) => a + z.estimatedMonthlySavingsUsd, 0);
+  const totalCredits = priced.reduce((a, z) => a + z.estimatedMonthlySavingsCredits, 0);
+  const assumptions = savingsAssumptions(priced);
+  const tip = assumptions
+    ? `Latest snapshot's Snowflake cost × ${assumptions.days} days (a snapshot is one day). AWS hosting is excluded. Credits are priced at ${formatUsd(assumptions.usdPerCredit)} each, a simulation assumption: the data is synthetic, so these are not real dollars.`
+    : 'Latest snapshot’s Snowflake cost projected over a month. AWS hosting is excluded.';
   return zombies.length === 0 ? (
     <EmptyState title="No zombie reports" hint="Every report that spends has an owner and users." />
   ) : (
@@ -319,7 +338,13 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
               {priced.length > 0 && (
                 <>
                   <th className={`${th} text-right`}>Latest cost</th>
-                  <th className={`${th} text-right`}>Est. savings / month</th>
+                  <th className={`${th} text-right`}>
+                    Est. monthly Snowflake savings <InfoTip text={tip} />
+                    <span className="block font-normal">
+                      (simulated scale
+                      {assumptions ? `, ${formatUsd(assumptions.usdPerCredit)}/credit` : ''})
+                    </span>
+                  </th>
                 </>
               )}
             </tr>
@@ -343,8 +368,11 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
                     <td className="py-2 pr-3 text-right tabular-nums">
                       {formatUsd(z.latestSnowflakeCostUsd)}
                     </td>
-                    <td className="py-2 pr-3 text-right font-medium tabular-nums">
-                      {formatUsd(z.estimatedMonthlySavingsUsd)}
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      <span className="font-medium">{formatUsd(z.estimatedMonthlySavingsUsd)}</span>
+                      <span className="block text-xs text-gray-500">
+                        {formatCredits(z.estimatedMonthlySavingsCredits)} credits
+                      </span>
                     </td>
                   </>
                 )}
@@ -355,9 +383,14 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
             <tfoot>
               <tr className="border-t border-gray-200 text-sm font-medium">
                 <td colSpan={4} className="py-2 text-right text-gray-700">
-                  Total estimated savings / month
+                  Total estimated monthly savings
                 </td>
-                <td className="py-2 pr-3 text-right tabular-nums">{formatUsd(total)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">
+                  {formatUsd(total)}
+                  <span className="block text-xs font-normal text-gray-500">
+                    {formatCredits(totalCredits)} credits
+                  </span>
+                </td>
               </tr>
             </tfoot>
           )}
@@ -365,8 +398,8 @@ function Zombies({ zombies }: { zombies: Redactable[] }) {
       </div>
       <p className="mt-2 text-xs text-gray-500">
         A zombie report still spends credits in the latest snapshot but has no owner or almost no
-        views. The estimate projects that snapshot’s Snowflake cost (one day) over a month; it
-        excludes AWS hosting, so retiring the report may save more.
+        views. Savings are an estimate on simulated data, not real spend; hover the info icon for
+        the assumptions.
       </p>
     </>
   );
@@ -566,7 +599,7 @@ export default function CostPage() {
             value={formatInt(zombies.length)}
             detail={
               moneyVisible
-                ? `Est. ${formatUsd(savings)} / month if retired`
+                ? `Est. ${formatUsd(savings)} monthly Snowflake savings (simulated)`
                 : 'Spending with no owner or users'
             }
           />

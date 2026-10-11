@@ -160,7 +160,7 @@ export async function getAnomalies(
 
   // Live view: membership depends on the current owner (an orphaned report is a zombie).
   const z = scoped('z.current_owner');
-  const zombieRows = await db.query<Omit<ZombieReport, 'estimatedMonthlySavingsUsd'>>(
+  const zombieRows = await db.query<Omit<ZombieReport, 'estimatedMonthlySavingsUsd' | 'estimatedMonthlySavingsCredits'>>(
     `SELECT z.report_id AS "reportId", z.report_name AS "reportName", z.current_owner AS "currentOwner",
             z.latest_snapshot_idx AS "latestSnapshotIdx", z.latest_views AS "latestViews", z.reason,
             z.latest_attributed_credits AS "latestAttributedCredits",
@@ -176,6 +176,7 @@ export async function getAnomalies(
   const zombies: ZombieReport[] = zombieRows.map((r) => ({
     ...r,
     estimatedMonthlySavingsUsd: r.latestSnowflakeCostUsd * config.SAVINGS_DAYS_PER_MONTH,
+    estimatedMonthlySavingsCredits: r.latestAttributedCredits * config.SAVINGS_DAYS_PER_MONTH,
   }));
 
   const aws = scoped('o.current_owner');

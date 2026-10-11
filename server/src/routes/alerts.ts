@@ -21,7 +21,12 @@ export const alertRoutes = [
     viewerResponse: pageSchema(alertSchema),
     handler: async ({ deps, scope, query }) =>
       paginateArray(
-        (await syncedAlerts(deps)).list(scope, { status: query.status, severity: query.severity }),
+        (await syncedAlerts(deps)).list(scope, {
+          status: query.status,
+          severity: query.severity,
+          resolved: query.resolved,
+          q: query.q,
+        }),
         query,
       ),
   }),

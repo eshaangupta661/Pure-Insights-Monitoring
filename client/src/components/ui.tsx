@@ -195,3 +195,24 @@ export function Widget({
     </section>
   );
 }
+
+/** An info icon whose explanation shows on hover and keyboard focus. */
+export function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={text}
+        className="rounded text-gray-400 hover:text-gray-700 focus:text-gray-700 focus:outline-none"
+      >
+        <Info className="size-3.5" aria-hidden />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute top-full right-0 z-20 mt-1 hidden w-64 rounded-md border border-gray-200 bg-white p-2 text-left text-xs font-normal text-gray-700 shadow-md group-focus-within:block group-hover:block"
+      >
+        {text}
+      </span>
+    </span>
+  );
+}

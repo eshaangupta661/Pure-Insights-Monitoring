@@ -176,6 +176,15 @@ assertTrue<AssertEqual<z.infer<typeof activeAlertCountsSchema>, ActiveAlertCount
 export const alertsQuerySchema = pageQuerySchema.extend({
   status: alertStatusSchema.optional(),
   severity: severitySchema.optional(),
+  resolved: booleanQuery
+    .optional()
+    .openapi({ description: 'false = leave out RESOLVED alerts (the default is to include them)' }),
+  q: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .openapi({ description: 'Case-insensitive substring of the report id or name' }),
 });
 
 export const alertIdParamsSchema = z.object({
@@ -588,6 +597,7 @@ export const zombieReportSchema = viewerZombieReportSchema
     latestAttributedCredits: z.number(),
     latestSnowflakeCostUsd: usd,
     estimatedMonthlySavingsUsd: usd,
+    estimatedMonthlySavingsCredits: z.number(),
     totalAttributedCredits: z.number(),
     totalAttributedCostUsd: usd,
   })

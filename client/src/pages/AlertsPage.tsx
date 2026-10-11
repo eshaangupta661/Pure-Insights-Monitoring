@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
-import { useState } from 'react';
+import { Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { Alert, AlertStatus, Page, Severity } from '@pic/shared';
 import { api } from '../api/http';
@@ -17,6 +18,7 @@ import {
   secondaryButtonClass,
 } from '../components/ui';
 import { useAuth } from '../auth/AuthProvider';
+import { useDebounced } from '../lib/useDebounced';
 import { useAlerts } from '../realtime/AlertsProvider';
 
 const PAGE_SIZE = 20;
@@ -97,7 +99,13 @@ export default function AlertsPage() {
 
   const statusParam = params.get('status');
   const severityParam = params.get('severity');
-  const status = isOneOf(STATUSES, statusParam) ? statusParam : undefined;
+  const showResolved = params.get('resolved') === 'true';
+  const parsedStatus = isOneOf(STATUSES, statusParam) ? statusParam : undefined;
+  // RESOLVED is only selectable while resolved alerts are shown.
+  const status = parsedStatus === 'RESOLVED' && !showResolved ? undefined : parsedStatus;
+  const q = params.get('q') ?? '';
+  const [search, setSearch] = useState(q);
+  const debouncedSearch = useDebounced(search, 300);
   const severity = isOneOf(SEVERITIES, severityParam) ? severityParam : undefined;
   const page = Math.max(1, Number(params.get('page')) || 1);
 
@@ -113,11 +121,34 @@ export default function AlertsPage() {
       { replace: true },
     );
 
+  // The URL follows the debounced search box.
+  useEffect(() => {
+    if (debouncedSearch.trim() !== q) setFilter('q', debouncedSearch.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
+  const toggleResolved = (checked: boolean) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (checked) next.set('resolved', 'true');
+        else {
+          next.delete('resolved');
+          if (next.get('status') === 'RESOLVED') next.delete('status');
+        }
+        next.delete('page');
+        return next;
+      },
+      { replace: true },
+    );
+
   const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
   if (status) query.set('status', status);
   if (severity) query.set('severity', severity);
+  if (!showResolved) query.set('resolved', 'false');
+  if (q) query.set('q', q);
   const alerts = useQuery({
-    queryKey: [...ALERTS_KEY, { status, severity, page }],
+    queryKey: [...ALERTS_KEY, { status, severity, showResolved, q, page }],
     queryFn: () => api<Page<Alert>>(`/alerts?${query.toString()}`),
     placeholderData: keepPreviousData,
   });
@@ -158,8 +189,8 @@ export default function AlertsPage() {
               value={status ?? ''}
               onChange={(e) => setFilter('status', e.target.value)}
             >
-              <option value="">All</option>
-              {STATUSES.map((s) => (
+              <option value="">{showResolved ? 'All' : 'Active'}</option>
+              {STATUSES.filter((s) => showResolved || s !== 'RESOLVED').map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABEL[s]}
                 </option>
@@ -181,6 +212,28 @@ export default function AlertsPage() {
               ))}
             </select>
           </label>
+          <label className="relative">
+            <span className="sr-only">Search alerts by report</span>
+            <Search
+              className="pointer-events-none absolute top-2 left-2.5 size-4 text-gray-400"
+              aria-hidden
+            />
+            <input
+              type="search"
+              placeholder="Report id or name"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`${controlClass} w-52 pl-8`}
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={showResolved}
+              onChange={(e) => toggleResolved(e.target.checked)}
+            />
+            Show resolved
+          </label>
         </div>
 
         {ackError && (
@@ -198,7 +251,11 @@ export default function AlertsPage() {
             <EmptyState
               title="No alerts match"
               hint={
-                status || severity ? 'Try clearing a filter.' : 'Everything in view is healthy.'
+                status || severity || q
+                  ? 'Try clearing a filter.'
+                  : showResolved
+                    ? 'No alerts yet.'
+                    : 'No active alerts. Everything in view is healthy.'
               }
             />
           ) : (

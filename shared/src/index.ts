@@ -347,6 +347,8 @@ export interface ZombieReport extends ViewerZombieReport {
   latestSnowflakeCostUsd: number;
   /** Latest snapshot's Snowflake cost × SAVINGS_DAYS_PER_MONTH: what retiring it might save a month. */
   estimatedMonthlySavingsUsd: number;
+  /** The same estimate in credits: latest snapshot's attributed credits × SAVINGS_DAYS_PER_MONTH. */
+  estimatedMonthlySavingsCredits: number;
   totalAttributedCredits: number;
   totalAttributedCostUsd: number;
 }

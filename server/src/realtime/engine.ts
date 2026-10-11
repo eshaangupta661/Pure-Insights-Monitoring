@@ -185,7 +185,18 @@ export class AlertEngine {
   }
 
   /** Alerts of the current cycle visible to `scope`: active first, then most severe, newest. */
-  list(scope: Scope, filter: { status?: AlertStatus; severity?: Severity } = {}): Alert[] {
+  list(
+    scope: Scope,
+    filter: {
+      status?: AlertStatus;
+      severity?: Severity;
+      /** false = leave out RESOLVED alerts. */
+      resolved?: boolean;
+      /** Case-insensitive substring of the report id or name. */
+      q?: string;
+    } = {},
+  ): Alert[] {
+    const needle = filter.q?.toLowerCase();
     return this.requireStore()
       .all()
       .map((a) => this.view(a))
@@ -193,7 +204,11 @@ export class AlertEngine {
         (a) =>
           scopeMatches(scope, a.ownerEmail) &&
           (filter.status === undefined || a.status === filter.status) &&
-          (filter.severity === undefined || a.severity === filter.severity),
+          (filter.severity === undefined || a.severity === filter.severity) &&
+          (filter.resolved !== false || a.status !== 'RESOLVED') &&
+          (needle === undefined ||
+            a.reportId.toLowerCase().includes(needle) ||
+            a.reportName.toLowerCase().includes(needle)),
       )
       .sort(
         (a, b) =>

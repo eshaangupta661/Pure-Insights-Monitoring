@@ -70,6 +70,22 @@ describe('alerts API', () => {
       expect((await admin.get('/api/v1/alerts?status=BAD')).status).toBe(400);
     });
 
+    it('resolved=false leaves out RESOLVED alerts; q matches report id or name', async () => {
+      const all = await alertsAs(admin);
+      const active = await alertsAs(admin, '&resolved=false');
+      expect(all.some((x) => x.status === 'RESOLVED')).toBe(true);
+      expect(active).toEqual(all.filter((x) => x.status !== 'RESOLVED'));
+      expect(await alertsAs(admin, '&resolved=true')).toEqual(all);
+
+      const target = all[0]!;
+      const byId = await alertsAs(admin, `&q=${target.reportId.toLowerCase()}`);
+      expect(byId.length).toBeGreaterThan(0);
+      expect(byId.every((x) => x.reportId === target.reportId)).toBe(true);
+      const byName = await alertsAs(admin, `&q=${encodeURIComponent(target.reportName)}`);
+      expect(byName.some((x) => x.id === target.id)).toBe(true);
+      expect(await alertsAs(admin, '&q=no-such-report')).toEqual([]);
+    });
+
     it('owner: only alerts on reports they currently own; viewer: all, read-only', async () => {
       const all = await alertsAs(admin);
       const mine = await alertsAs(owner);

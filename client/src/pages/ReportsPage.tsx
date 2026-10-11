@@ -16,6 +16,7 @@ import {
   refreshLabel,
 } from '../components/ui';
 import { formatInt, formatSeconds } from '../lib/format';
+import { useDebounced } from '../lib/useDebounced';
 import { useTrend } from '../api/queries';
 import ReportDrawer from './ReportDrawer';
 
@@ -27,15 +28,6 @@ const isStatus = (v: string | null): v is RefreshStatus =>
   v !== null && (STATUSES as string[]).includes(v);
 const isSort = (v: string | null): v is SortKey =>
   v === 'reportId' || v === 'loadTime' || v === 'views' || v === 'status';
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return debounced;
-}
 
 function SortHeader({
   label,
