@@ -16,6 +16,7 @@ import { useTrend } from '../api/queries';
 import { useAuth } from '../auth/AuthProvider';
 import { SCOPE_PARAM, parseScope, useOverviewScope } from '../lib/overviewScope';
 import { useAlerts, type ConnectionStatus } from '../realtime/AlertsProvider';
+import AdminControls from './AdminControls';
 import CriticalPopup from './CriticalPopup';
 import NotificationBell from './NotificationBell';
 import { RoleBadge } from './ui';
@@ -219,6 +220,7 @@ export default function AppShell() {
           <TickIndicator />
           <ConnectionDot />
           <ScopeSwitch />
+          {user.role === 'admin' && <AdminControls />}
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
             <span className="hidden text-xs text-gray-500 xl:inline">{user.email}</span>

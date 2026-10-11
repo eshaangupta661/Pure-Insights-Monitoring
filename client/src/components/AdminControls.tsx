@@ -13,7 +13,7 @@ import type {
 import { api } from '../api/http';
 import { ALERTS_KEY, REPLAY_KEY } from '../api/queries';
 import Modal from './Modal';
-import { Card, controlClass, primaryButtonClass, secondaryButtonClass } from './ui';
+import { controlClass, primaryButtonClass, secondaryButtonClass } from './ui';
 
 /** Pause/resume and speed of the replay clock (admin only; the server enforces it too). */
 export function ReplayControls() {
@@ -30,8 +30,10 @@ export function ReplayControls() {
   const state = replay.data;
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <span className="text-xs font-medium tracking-wide text-gray-500 uppercase">Replay</span>
+    <div className="flex items-center gap-2">
+      <span className="hidden text-xs font-medium tracking-wide text-gray-500 uppercase xl:inline">
+        Replay
+      </span>
       <button
         type="button"
         className={`${secondaryButtonClass} flex items-center gap-1.5`}
@@ -45,8 +47,8 @@ export function ReplayControls() {
         )}
         {state?.paused ? 'Resume' : 'Pause'}
       </button>
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        Speed
+      <label className="flex items-center gap-1.5 text-sm text-gray-700">
+        <span className="hidden sm:inline">Speed</span>
         <select
           className={controlClass}
           disabled={!state || send.isPending}
@@ -61,7 +63,7 @@ export function ReplayControls() {
         </select>
       </label>
       {state && (
-        <span className="text-xs text-gray-500">
+        <span className="hidden text-xs whitespace-nowrap text-gray-500 2xl:inline">
           {state.paused ? 'Paused' : 'Running'} · one snapshot per{' '}
           {state.tickMs / 1000 / state.speed} s
         </span>
@@ -182,23 +184,22 @@ function IncidentDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** The admin-only strip on the Alerts page: replay controls and the incident dialog. */
+/** Admin-only header controls: replay pause/speed and the incident dialog. */
 export default function AdminControls() {
   const [open, setOpen] = useState(false);
   return (
-    <Card>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ReplayControls />
-        <button
-          type="button"
-          className={`${secondaryButtonClass} flex items-center gap-1.5`}
-          onClick={() => setOpen(true)}
-        >
-          <Siren className="size-3.5" aria-hidden />
-          Inject incident
-        </button>
-      </div>
+    <div className="flex items-center gap-2">
+      <ReplayControls />
+      <button
+        type="button"
+        className={`${secondaryButtonClass} flex items-center gap-1.5 whitespace-nowrap`}
+        onClick={() => setOpen(true)}
+        aria-label="Inject incident"
+      >
+        <Siren className="size-3.5" aria-hidden />
+        <span className="hidden lg:inline">Inject incident</span>
+      </button>
       {open && <IncidentDialog onClose={() => setOpen(false)} />}
-    </Card>
+    </div>
   );
 }

@@ -5,7 +5,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import type { Alert, AlertStatus, BulkAckResult, Page, Severity } from '@pic/shared';
 import { api } from '../api/http';
 import { ALERTS_KEY, OVERVIEW_KEY } from '../api/queries';
-import AdminControls from '../components/AdminControls';
 import {
   Card,
   EmptyState,
@@ -401,8 +400,6 @@ export default function AlertsPage() {
             : 'Not connected: the list may be out of date until the connection returns.'}
         </p>
       </div>
-
-      {user?.role === 'admin' && <AdminControls />}
 
       <Card>
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
